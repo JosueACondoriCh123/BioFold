@@ -1,0 +1,15 @@
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+playwright-report/
+test-results/
+.vite/
+.env
+.env.*
+!.env.example
+.vercel/
+.docx_work/
+.qa_*/
+*.log
+*.docx
