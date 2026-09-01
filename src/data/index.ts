@@ -1,0 +1,1 @@
+export { SupabaseProjectDataAdapter } from "./supabaseProjectDataAdapter";
