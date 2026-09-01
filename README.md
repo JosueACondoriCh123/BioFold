@@ -1,46 +1,90 @@
 # BioFold 3D
 
-**A WebMCP-native molecular workspace platform where people and AI agents explore the same live protein structures.**
+**A WebMCP-native molecular workspace platform where researchers and AI agents explore the same live protein structures.**
 
-BioFold 3D bridges the gap between molecular visualization and autonomous agentic workflows. Built as a full web platform with secure user authentication, responsive workspace navigation, and an interactive 3D laboratory, BioFold enables researchers and browser agents to rotate, style, select, measure, and analyze proteins cooperatively in real time. Every action performed by either a human or an agent flows through a unified command bus and is recorded with scientific provenance in a live activity stream.
+BioFold 3D bridges the gap between molecular visualization, persistent scientific workspaces, and autonomous agentic workflows. Built as a comprehensive web application with secure authentication, optimistic project persistence, responsive navigation, and an interactive 3D laboratory, BioFold enables researchers and browser agents to rotate, style, select, measure, and analyze proteins cooperatively in real time. Every action performed by either a human or an agent flows through a unified command bus and is recorded with scientific provenance in a live activity stream.
+
+---
+
+## Architecture Overview
+
+```mermaid
+flowchart TB
+    subgraph Client["Client Browser (BioFold 3D)"]
+        UI["React UI (Dashboard, Lab, Inspector, Modals)"]
+        CB["Unified Command Bus (Typed Domain Commands)"]
+        Viewer["3Dmol.js WebGL Viewer"]
+        Worker["Geometry & Surface Web Worker"]
+        WebMCP["WebMCP Provider (document.modelContext)"]
+        AsstUI["Assistant Chat & Inspector Tabs"]
+    end
+
+    subgraph DataLayer["Persistence & AI Services"]
+        PDP["ProjectDataPort (Optimistic Revision Locking)"]
+        SupaDB[("Supabase PostgreSQL + pgvector + RLS")]
+        AsstClient["AssistantClient (Streaming & Citations)"]
+        RCSB["RCSB Protein Data Bank (mmCIF)"]
+    end
+
+    UI -->|Dispatch| CB
+    WebMCP -->|Propose/Execute| CB
+    AsstUI -->|Confirm Proposal (Apply)| CB
+    CB -->|Render| Viewer
+    CB -->|Offload calculation| Worker
+    CB -->|Persist Snapshot & Events| PDP
+    PDP -->|Row-Level Security| SupaDB
+    AsstUI -->|Stream prompts| AsstClient
+    Viewer -.->|Fetch mmCIF| RCSB
+```
 
 ---
 
 ## Key Features
 
-### 1. Platform & User Experience
-- **Lightweight Public Landing (`/`):** Fast, accessible overview of platform capabilities and structure previews with **zero WebGL or WebMCP overhead** until entering the laboratory.
-- **Real Supabase Authentication:** Secure session management with PKCE flow, Email & Password, Google OAuth, email verification, and password recovery.
-- **Workspace Navigation:** Private application suite with home dashboard (`/app`), 3D laboratory (`/app/lab`), and account profile settings (`/app/account`).
-- **Protected Routing & Deep Links:** Automatic redirection of unauthenticated access to `/login?next=...`, preserving structure queries (e.g. `?pdb=4HHB`) upon sign-in.
-- **Scene Preservation:** Molecular scene and camera state remain active in memory when navigating between workspace tabs and only teardown upon explicit logout.
-- **Private Saved Projects:** Authenticated users can create, rename, delete and reopen molecular workspaces; confirmed view state, measurements and audited commands are restored after reload.
+### 1. Persistent Private Workspaces & Project Management
+- **Full Project CRUD:** Create, rename, inspect, and delete private molecular projects with real-time client validation and confirmation dialogues.
+- **Optimistic Revision Locking:** Robust concurrency control using versioned revisions (`revision` / `expectedRevision`) that detect conflicting edits and notify the user with resolution workflows.
+- **Real-Time Persistence Status:** Live indicators showing `Saving`, `Saved` (with revision number and timestamp), `Offline`, `Conflict`, and `Error` states.
+- **Durable Scene Snapshots:** 3D camera angles, color representations, molecular surface opacity, active selections, and atomic measurements are stored in JSON snapshots (`WorkspaceSnapshotV1`) and cleanly restored on reload.
+- **Strict Row-Level Security (RLS):** Database policies enforce strict per-user data isolation (`owner_id = auth.uid()`). Direct browser writes to AI-generated messages and token consumption tables are completely blocked from client roles.
 
-### 2. Interactive 3D Molecular Laboratory
+### 2. Scientific Assistant & Workspace Inspector
+- **Dual-Mode Inspector Panel:**
+  - **Results Tab:** Quantitative composition breakdown (chains, residues, atoms, waters), live sub-ångström distance readouts with Euclidean vectors, mutation context with 5.0 Å spatial neighbors & physicochemical shifts (charge, volume, hydropathy), and an audited chronological activity stream.
+  - **Assistant Tab:** Interactive AI chat powered by streaming token deltas, Markdown rendering, and contextual prompts.
+- **Explicit Command Proposals:** When proposing changes to the 3D scene (e.g. focusing residues, adjusting representations, computing surfaces), the Assistant generates structured `CommandProposal` cards with scientific rationales. Actions require explicit human confirmation (**`Apply`** vs. **`Dismiss`**) with `approvedByUser: true` before execution.
+- **Scientific Citations & Provenance:** Built-in citations drawer with verified HTTPS links and publisher badges (`BioFold`, `RCSB PDB`, `UniProt`).
+- **Generation Controls:** Live `Stop generating` cancellation via `AbortController` and one-click `Retry` on network interruptions.
+
+### 3. Interactive 3D Molecular Laboratory
 - **High-Performance 3Dmol.js Viewer:** Hardware-accelerated WebGL molecular graphics with cartoon, stick, sphere, and line representations.
 - **Scientific Color Schemes:** Chain-based, residue spectrum, and element-based coloring.
 - **Molecular Surfaces & Geometry:** Van der Waals molecular surface computation with real-time opacity controls and non-blocking worker threads.
 - **Atomic Distance & Neighborhoods:** Sub-ångström distance measurements with 3D dashed vectors and 5 Å spatial neighbor mapping.
 - **Deterministic Offline Fixtures & RCSB PDB Ingestion:** Bundled offline structures (`1CRN`, `4HHB`) and on-demand live fetching of valid 4-character mmCIF records from RCSB.
 
-### 3. Agentic WebMCP Integration
+### 4. Agentic WebMCP Integration
 - **Eight Imperative WebMCP Tools:** Dynamically registered via `document.modelContext.registerTool` strictly when an authenticated user opens `/app/lab`.
 - **Single Command Bus:** Human UI controls and agent tools call the exact same typed domain commands—no DOM scraping or backdoor state mutation.
 - **Explicit Scientific Evidence Labels:** Every output is tagged as *Observed* (PDB coordinates), *Calculated* (geometric measurements), *Heuristic* (physicochemical mutation comparisons), or *Unavailable*.
 - **Lifecycle & Cancellation:** WebMCP tools automatically de-register when leaving the lab, clean up worker jobs on abort signals, and gracefully fall back to human-only mode in standard browsers.
+
+### 5. Responsive Design & Accessibility
+- **Breakpoints:** Pixel-perfect layouts adapted for **1440px** (Desktop), **1000px** (Laptop / Tablet landscape), **720px** (Tablet portrait), and **390px** (Mobile).
+- **Accessibility:** Full keyboard navigation (`Tab`, arrow navigation for tabs, `Escape` to dismiss modals, `Enter` to send prompts), visible focus rings (`:focus-visible`), ARIA landmarks (`role="tablist"`, `role="tabpanel"`, `role="dialog"`, `role="alert"`), and `aria-live="polite"` status announcements.
 
 ---
 
 ## Step-by-Step Installation & Setup
 
 ### Prerequisites
-- **Node.js:** v22.12.0 or higher (the installed Supabase SDK no longer supports Node 20)
+- **Node.js:** v22.12.0 or higher
 - **Package Manager:** `pnpm` 11.19.0 (see `packageManager` in `package.json`)
 - **Browser:** Google Chrome (v130+ with WebMCP enabled for AI agent interaction)
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-org/BioFold.git
+git clone https://github.com/JosueACondoriCh123/BioFold.git
 cd BioFold
 ```
 
@@ -50,7 +94,7 @@ pnpm install
 ```
 
 ### 3. Configure Environment Variables
-BioFold connects to Supabase Auth on the client side using public credentials.
+BioFold connects to Supabase on the client side using public credentials.
 
 Copy the example environment template:
 ```bash
@@ -67,7 +111,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_public_key_here
 ```
 
 > [!NOTE]
-> Use real public project values for normal development. Without them, accounts remain explicitly unavailable; there is no guest or mock login. Automated QA builds its own isolated configuration and never reads `.env` or `.env.local`. Never put secret keys (`service_role`, database passwords) in `VITE_*` variables. See [Auth setup](docs/AUTH_SETUP.md) for callbacks, Google and SMTP.
+> Use real public project values for normal development. Without them, accounts remain explicitly unavailable; there is no guest or mock login. Automated QA builds its own isolated configuration and never reads `.env` or `.env.local`. Never put secret keys (`service_role`, database passwords) in `VITE_*` variables. See [Auth setup](docs/AUTH_SETUP.md) for callbacks, Google OAuth, and SMTP configuration.
 
 ### 4. Start the Local Development Server
 ```bash
@@ -94,8 +138,8 @@ Open your browser to `http://127.0.0.1:4173`:
 | `/forgot-password` | Public | Password recovery request form. |
 | `/reset-password` | Guarded | Set new password form; only accessible via verified recovery tokens. |
 | `/auth/callback` | Public | PKCE and OAuth exchange handler that redirects to target destinations. |
-| `/app` | Authenticated | User dashboard with personalized greetings, quick guides, and 1-click structure loaders. |
-| `/app/lab` | Authenticated | Live 3D molecular laboratory with 3Dmol viewer, scene controls, and WebMCP agent tools. |
+| `/app` | Authenticated | User dashboard with saved projects, persistence status, quick guides, and 1-click structure loaders. |
+| `/app/lab` | Authenticated | Live 3D molecular laboratory with 3Dmol viewer, scene controls, Inspector tabs (Results & Assistant), and WebMCP agent tools. |
 | `/app/account` | Authenticated | Profile details (name update in Supabase `user_metadata`), security notes, and sign out. |
 | `*` | Public | 404 page with quick link back to safe ground. |
 
@@ -129,30 +173,40 @@ When a compatible AI agent connects to BioFold inside `/app/lab`, the following 
 BioFold maintains a zero-compromise test suite covering static analysis, unit tests, integration tests, and full browser E2E flows.
 
 ```bash
-# 1. Linting and code style (ESLint with strict React Refresh rules)
+# 1. Linting and code style (ESLint with strict rules)
 pnpm lint
 
 # 2. Type checking (Strict TypeScript)
 pnpm typecheck
 
-# 3. Unit and integration tests (279 tests across 30 suites in Vitest)
+# 3. Unit, data, and component test suite (Vitest)
 pnpm test
 
 # 4. Production build verification (Vite)
 pnpm build
 
-# 5. Full browser End-to-End test suite (52 tests across 4 suites in Playwright)
+# 5. Full browser End-to-End test suite (Playwright)
 pnpm test:e2e
 ```
 
-### Phase 2 integration status
+### Test Coverage Highlights:
+- **`tests/data/`**: Tests for `SupabaseProjectDataAdapter`, optimistic concurrency locking (`CONFLICT`), input validation, and PostgreSQL Row-Level Security (RLS) simulation for User A, User B, and anonymous access.
+- **`tests/features/`**: Tests for `ProjectsDashboard`, `PersistenceIndicator` (`Saving`, `Saved`, `Offline`, `Conflict`, `Error`), `ProjectDialog`, `InspectorPanel`, `ResultsTab`, and `AssistantChat` (streaming, cancellation, citations, and command proposals).
+- **`tests/auth/`**: Complete Supabase authentication adapter tests, PKCE flows, session recovery, password update, and navigation redirects.
+- **`tests/e2e/`**: Playwright browser tests verifying landing isolation (no WebGL on home), protected routes, complete auth lifecycle, private project CRUD boundary, scene preservation, and agent WebMCP interactions.
 
-The integration branch now includes private project CRUD, optimistic snapshot persistence, durable activity restoration, an Assistant inspector whose proposals require explicit confirmation, hardened RLS migrations, isolated PostgREST/Auth QA, a versioned knowledge manifest and a fail-closed Edge Function scaffold. The Assistant still uses a local deterministic client; OpenRouter and production RAG remain a later server-side gate. See [Phase 2 development](docs/PHASE2_DEVELOPMENT.md) and [external-agent coordination](docs/PHASE2_COORDINATION.md).
+---
 
-### E2E Test Coverage:
-- `tests/e2e/platform.spec.ts`: Landing isolation, protected routes, complete auth/recovery, private project CRUD boundary, persisted scene restoration, profile editing, logout, OAuth resilience, and 404 handling.
-- `tests/e2e/laboratorySession.spec.ts`: 3D scene and camera preservation across workspace navigation, clean logout teardown, and example loaders.
-- `tests/e2e/smoke.spec.ts`: Agent executing all 8 WebMCP tools in tandem with human UI actions, surface progress HUD, and audit trails.
+## Database Migrations & Vector Corpus
+
+The persistent layer is backed by Supabase PostgreSQL migrations located in [`supabase/migrations/`](./supabase/migrations/):
+
+1. **`20260901000000_enable_extensions_and_helpers.sql`**: Enables `pgvector` extension and timestamp trigger functions.
+2. **`20260901000001_create_profiles_and_projects.sql`**: User profiles and private projects with cascaded foreign keys and owner-isolated RLS.
+3. **`20260901000002_create_project_events.sql`**: Activity audit trails with domain status and scientific evidence classifications.
+4. **`20260901000003_create_conversations_and_messages.sql`**: AI conversations with client writes restricted strictly to `sender = 'user'`.
+5. **`20260901000004_create_ai_requests_and_structure_metadata.sql`**: Token consumption telemetry and public mmCIF cache.
+6. **`20260901000005_create_knowledge_corpus.sql`**: Domain knowledge sources and 384-dimensional chunk embeddings (`vector(384)`) indexed with HNSW cosine distance (`vector_cosine_ops`).
 
 ---
 
