@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "embeddingModel": "gte-small",
+  "embeddingDimensions": 384,
+  "sources": [
+    {
+      "id": "biofold-evidence-levels-v1",
+      "title": "Scientific evidence levels in BioFold",
+      "publisher": "BioFold",
+      "url": "https://github.com/JosueACondoriCh123/BioFold",
+      "license": "MIT",
+      "retrievedAt": "2026-09-01",
+      "contentPath": "./evidence-levels.md",
+      "sha256": "5dfca4e25bdd95847fbce42f5e5e27cdbca1c35360e2f78609baf8f46b7be59d"
+    },
+    {
+      "id": "biofold-structure-interpretation-v1",
+      "title": "Interpreting molecular structure context",
+      "publisher": "BioFold",
+      "url": "https://github.com/JosueACondoriCh123/BioFold",
+      "license": "MIT",
+      "retrievedAt": "2026-09-01",
+      "contentPath": "./structure-interpretation.md",
+      "sha256": "4a32ae9ccde3f54251e396c2475536bc6892762d0c735ec33503451057af8710"
+    }
+  ],
+  "externalProviders": [
+    {
+      "id": "rcsb-pdb",
+      "title": "RCSB Protein Data Bank",
+      "publisher": "RCSB PDB",
+      "url": "https://www.rcsb.org/",
+      "mode": "live-metadata-with-seven-day-cache"
+    },
+    {
+      "id": "uniprot",
+      "title": "UniProt",
+      "publisher": "UniProt",
+      "url": "https://www.uniprot.org/",
+      "mode": "live-metadata-with-seven-day-cache"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+-- Phase 2 starts with no application or knowledge records.
+-- Curated knowledge ingestion is explicit and checksum-driven.

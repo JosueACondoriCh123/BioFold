@@ -8,6 +8,7 @@ import type {
   RepresentationStyle,
   ResidueRef,
 } from "../types/domain";
+import { parseViewerCameraState, type ViewerCameraState } from "../types/projects";
 
 function selectionOf(ref: ResidueRef) {
   return {
@@ -100,6 +101,7 @@ class MolecularViewerPort {
   private removeListeners?: () => void;
   private element: HTMLElement | null = null;
   private suspended = false;
+  private readonly viewListeners = new Set<(view: ViewerCameraState) => void>();
 
   attach(element: HTMLElement) {
     if (this.viewer && this.element === element) return;
@@ -118,6 +120,14 @@ class MolecularViewerPort {
       this.element = element;
       this.suspended = false;
       this.viewer.setViewStyle({ style: "outline", color: "#173f38", width: 0.06 });
+      this.viewer.setViewChangeCallback((view: unknown) => {
+        try {
+          const camera = parseViewerCameraState(view);
+          for (const listener of this.viewListeners) listener(camera);
+        } catch {
+          // Ignore transient or provider-specific camera payloads.
+        }
+      });
       this.viewer.render();
     } catch (error) {
       this.dispose();
@@ -134,7 +144,20 @@ class MolecularViewerPort {
     return this.viewer !== null;
   }
 
-  getView() { return this.viewer?.getView() ?? null; }
+  getView(): ViewerCameraState | null {
+    if (!this.viewer) return null;
+    return parseViewerCameraState(this.viewer.getView());
+  }
+
+  setView(view: ViewerCameraState) {
+    if (!this.viewer) throw new ViewerPortError("RENDER_FAILED", "The molecular viewer is not ready.");
+    this.viewer.setView([...parseViewerCameraState(view)]).render();
+  }
+
+  subscribeViewChanges(listener: (view: ViewerCameraState) => void) {
+    this.viewListeners.add(listener);
+    return () => { this.viewListeners.delete(listener); };
+  }
 
   resize() {
     if (this.suspended || !this.element?.clientWidth || !this.element.clientHeight) return;

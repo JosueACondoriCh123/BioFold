@@ -109,7 +109,7 @@ describe("WebMCP adapter", () => {
         index + 1,
         name,
         VALID_INPUTS[name],
-        { origin: "agent", signal: controller.signal },
+        { origin: "agent", agentKind: "webmcp", signal: controller.signal },
       );
     }
   });

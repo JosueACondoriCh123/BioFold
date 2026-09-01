@@ -33,4 +33,10 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "off"
     },
   },
+  {
+    files: ["supabase/functions/**/*.ts"],
+    languageOptions: {
+      globals: { ...globals.deno, ...globals.worker },
+    },
+  },
 );

@@ -10,7 +10,7 @@ function toToolDefinition(name: CommandName, generation?: number): WebMCPToolDef
     name: contract.name, title: contract.title, description: contract.description,
     inputSchema: contract.inputSchema, annotations: contract.annotations,
     execute: (input, context) => commandBus.execute(name, input as CommandInput<typeof name>, {
-      origin: "agent", signal: context?.signal,
+      origin: "agent", agentKind: "webmcp", signal: context?.signal,
       ...(generation === undefined ? {} : { workspaceGeneration: generation }),
     }),
   };

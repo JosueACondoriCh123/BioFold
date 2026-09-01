@@ -144,6 +144,10 @@ pnpm build
 pnpm test:e2e
 ```
 
+### Phase 2 development foundation
+
+The integration branch includes frozen persistence and assistant contracts, in-memory adapters, a versioned knowledge manifest, local Supabase configuration and a fail-closed Edge Function scaffold. See [Phase 2 development](docs/PHASE2_DEVELOPMENT.md) and [external-agent coordination](docs/PHASE2_COORDINATION.md).
+
 ### E2E Test Coverage:
 - `tests/e2e/platform.spec.ts`: Landing page isolation, protected routes, login, signup, verification, recovery, profile editing, logout, OAuth error resilience, and 404 handling.
 - `tests/e2e/laboratorySession.spec.ts`: 3D scene and camera preservation across workspace navigation, clean logout teardown, and example loaders.

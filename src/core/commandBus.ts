@@ -79,6 +79,9 @@ class CommandBus {
     if (!scope.active || (context.workspaceGeneration !== undefined && context.workspaceGeneration !== scope.generation)) {
       return fail(activityId, "WORKSPACE_INACTIVE", "Open the laboratory and discover its current tools before using this action.");
     }
+    if (context.agentKind === "assistant" && context.approvedByUser !== true) {
+      return fail(activityId, "INVALID_INPUT", "Assistant actions require explicit user confirmation.");
+    }
     const lifetime = combineSignals(scope.signal, context.signal);
     const start = performance.now();
     let result: CommandResult;
@@ -110,6 +113,9 @@ class CommandBus {
       message: result.ok ? this.successMessage(command, result.data) : result.error!.message,
       createdAt: new Date().toISOString(),
       durationMs,
+      agentKind: context.agentKind,
+      approvedByUser: context.approvedByUser,
+      sourceMessageId: context.sourceMessageId,
     };
     useAppStore.getState().addActivity(entry);
     if (workspaceSession.getSnapshot().generation === scope.generation) useAppStore.getState().setError(

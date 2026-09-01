@@ -89,6 +89,42 @@ afterEach(() => {
 });
 
 describe("Command Bus atomicity", () => {
+  it("rejects unconfirmed assistant actions without changing viewer or activity", async () => {
+    const representationSpy = vi.spyOn(viewerPort, "setRepresentation");
+
+    const result = await commandBus.execute(
+      "set_representation",
+      { style: "stick", colorScheme: "spectrum" },
+      { origin: "agent", agentKind: "assistant", sourceMessageId: "message-1" },
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: "INVALID_INPUT" } });
+    expect(representationSpy).not.toHaveBeenCalled();
+    expect(useAppStore.getState().activity).toHaveLength(0);
+  });
+
+  it("labels confirmed assistant actions in the shared activity stream", async () => {
+    vi.spyOn(viewerPort, "setRepresentation").mockImplementation(() => undefined);
+
+    const result = await commandBus.execute(
+      "set_representation",
+      { style: "stick", colorScheme: "spectrum" },
+      {
+        origin: "agent",
+        agentKind: "assistant",
+        approvedByUser: true,
+        sourceMessageId: "message-1",
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(useAppStore.getState().activity[0]).toMatchObject({
+      agentKind: "assistant",
+      approvedByUser: true,
+      sourceMessageId: "message-1",
+    });
+  });
+
   it("cancels before loading without touching the gateway, viewer, or workspace", async () => {
     const controller = new AbortController();
     controller.abort("already-cancelled");

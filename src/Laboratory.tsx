@@ -122,6 +122,9 @@ function PanelTitle({ icon, eyebrow, title }: { icon: React.ReactNode; eyebrow: 
 }
 
 function ActivityItem({ entry }: { entry: ActivityEntry }) {
+  const originLabel = entry.agentKind === "assistant" && entry.approvedByUser
+    ? "Assistant · confirmed"
+    : entry.agentKind === "webmcp" ? "WebMCP agent" : entry.origin;
   return (
     <article
       className={`activity-item ${entry.status}`}
@@ -136,7 +139,7 @@ function ActivityItem({ entry }: { entry: ActivityEntry }) {
       <div className="activity-copy">
         <div className="activity-meta">
           <span className="activity-command">{COMMAND_LABELS[entry.command]}</span>
-          <span className={`activity-origin ${entry.origin}`}>{entry.origin}</span>
+          <span className={`activity-origin ${entry.origin}`}>{originLabel}</span>
         </div>
         <strong>{entry.message}</strong>
         <span className="activity-timing"><Clock3 size={11} /> {formatActivityTime(entry.createdAt)} · {entry.durationMs} ms</span>

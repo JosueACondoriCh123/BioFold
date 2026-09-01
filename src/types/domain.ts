@@ -176,6 +176,9 @@ export interface ActivityEntry {
   message: string;
   createdAt: string;
   durationMs: number;
+  agentKind?: "webmcp" | "assistant";
+  approvedByUser?: boolean;
+  sourceMessageId?: string;
 }
 
 export interface CommandContext {
@@ -183,4 +186,9 @@ export interface CommandContext {
   signal?: AbortSignal;
   /** Bound by registered tools, never accepted from tool input. */
   workspaceGeneration?: number;
+  /** Internal agent classification; never accepted from a command payload. */
+  agentKind?: "webmcp" | "assistant";
+  /** Assistant commands require an explicit user confirmation before dispatch. */
+  approvedByUser?: boolean;
+  sourceMessageId?: string;
 }
