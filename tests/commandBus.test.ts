@@ -125,6 +125,36 @@ describe("Command Bus atomicity", () => {
     });
   });
 
+  it("publishes one typed completion to persistence observers", async () => {
+    vi.spyOn(viewerPort, "setRepresentation").mockImplementation(() => undefined);
+    const listener = vi.fn();
+    const unsubscribe = commandBus.subscribe(listener);
+
+    try {
+      const result = await commandBus.execute(
+        "set_representation",
+        { style: "stick", colorScheme: "spectrum" },
+        { origin: "human" },
+      );
+
+      expect(result.ok).toBe(true);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+        command: "set_representation",
+        input: { style: "stick", colorScheme: "spectrum" },
+        result,
+        activity: expect.objectContaining({
+          id: result.activityId,
+          command: "set_representation",
+          origin: "human",
+          status: "success",
+        }),
+      }));
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it("cancels before loading without touching the gateway, viewer, or workspace", async () => {
     const controller = new AbortController();
     controller.abort("already-cancelled");

@@ -20,6 +20,16 @@ import type {
   MutationPreview,
 } from "../types/domain";
 
+export type CommandExecution = {
+  [K in CommandName]: {
+    command: K;
+    input: CommandInput<K>;
+    context: CommandContext;
+    result: CommandResult<CommandOutput<K>>;
+    activity: ActivityEntry;
+  }
+}[CommandName];
+
 function makeId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -49,6 +59,7 @@ function assertNotAborted(signal?: AbortSignal) {
 class CommandBus {
   private activeLoad?: AbortController;
   private activeSurface?: AbortController;
+  private readonly listeners = new Set<(execution: CommandExecution) => void>();
 
   constructor() {
     workspaceSession.subscribe((next, previous) => {
@@ -65,6 +76,11 @@ class CommandBus {
     const state = useAppStore.getState();
     state.setLoading(false);
     if (state.surfaceOperation.status === "loading") state.clearSurfaceError();
+  }
+
+  subscribe(listener: (execution: CommandExecution) => void) {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
   }
 
   async execute<K extends CommandName>(
@@ -118,6 +134,10 @@ class CommandBus {
       sourceMessageId: context.sourceMessageId,
     };
     useAppStore.getState().addActivity(entry);
+    const execution = { command, input, context, result, activity: entry } as CommandExecution;
+    for (const listener of this.listeners) {
+      try { listener(execution); } catch { /* Persistence observers never alter command completion. */ }
+    }
     if (workspaceSession.getSnapshot().generation === scope.generation) useAppStore.getState().setError(
       result.ok || result.error?.code === "CANCELLED" ? undefined : result.error?.message,
     );
@@ -297,9 +317,13 @@ class CommandBus {
         };
         controller.signal.addEventListener("abort", cancelled, { once: true });
         if (typeof requestAnimationFrame === "function") {
-          frame = requestAnimationFrame(complete);
+          frame = requestAnimationFrame(() => {
+            // Keep the pending state visible long enough to be perceived even
+            // when 3Dmol resolves a small fixture surface synchronously.
+            timer = setTimeout(complete, 80);
+          });
         } else {
-          timer = setTimeout(complete, 0);
+          timer = setTimeout(complete, 80);
         }
       });
       assertNotAborted(controller.signal);

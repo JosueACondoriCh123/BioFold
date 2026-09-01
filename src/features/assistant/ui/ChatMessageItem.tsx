@@ -1,12 +1,13 @@
 import { Bot, User, AlertCircle, RefreshCw } from "lucide-react";
 import type { CommandProposal } from "../../../types/assistant";
 import type { UiChatMessage } from "./types";
+import type { ApplyProposalHandler } from "./types";
 import { CitationsList } from "./CitationsList";
 import { CommandProposalCard } from "./CommandProposalCard";
 
 export interface ChatMessageItemProps {
   message: UiChatMessage;
-  onApplyProposal?: (proposal: CommandProposal) => void;
+  onApplyProposal?: ApplyProposalHandler;
   onDismissProposal?: (proposal: CommandProposal) => void;
   onRetry?: () => void;
 }
@@ -61,7 +62,9 @@ export function ChatMessageItem({
                 proposal={proposal}
                 isApplied={message.appliedProposals?.has(proposal.id)}
                 isDismissed={message.dismissedProposals?.has(proposal.id)}
-                onApply={(p) => onApplyProposal?.(p)}
+                isApplying={message.applyingProposals?.has(proposal.id)}
+                error={message.proposalErrors?.[proposal.id]}
+                onApply={(p) => { void onApplyProposal?.(p, message.sourceMessageId ?? message.id); }}
                 onDismiss={(p) => onDismissProposal?.(p)}
               />
             ))}

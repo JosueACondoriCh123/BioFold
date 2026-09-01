@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "../types/database.types";
+import { COMMAND_NAMES, parseCommandInput } from "../core/commandContracts";
 import {
   createEmptyWorkspaceSnapshot,
   parseWorkspaceSnapshot,
@@ -68,12 +69,7 @@ function validateDescription(description?: string): string {
 }
 
 function mapDbProjectToRecord(row: DbProject): ProjectRecord {
-  let snapshot: WorkspaceSnapshotV1;
-  try {
-    snapshot = parseWorkspaceSnapshot(row.snapshot);
-  } catch {
-    snapshot = createEmptyWorkspaceSnapshot(row.active_pdb_id ?? undefined);
-  }
+  const snapshot = parseWorkspaceSnapshot(row.snapshot);
 
   return {
     id: row.id,
@@ -104,24 +100,42 @@ function mapDbProjectToSummary(row: Pick<
 }
 
 function mapDbEventToRecord(row: DbProjectEvent): ProjectEventRecord {
+  if (!(COMMAND_NAMES as readonly string[]).includes(row.command)) {
+    throw new Error("Stored project event uses an unsupported command.");
+  }
+  if (row.origin !== "human" && row.origin !== "agent") {
+    throw new Error("Stored project event uses an unsupported origin.");
+  }
+  if (row.status !== "success" && row.status !== "error") {
+    throw new Error("Stored project event uses an unsupported status.");
+  }
+  if (!["observed", "calculated", "heuristic", "unavailable"].includes(row.evidence)) {
+    throw new Error("Stored project event uses an unsupported evidence level.");
+  }
+  const command = row.command as ProjectEventRecord["command"];
+  const input = parseCommandInput(command, row.input);
   return {
     id: row.id,
     projectId: row.project_id,
     activityId: row.activity_id,
-    command: row.command as ProjectEventRecord["command"],
-    origin: row.origin as ProjectEventRecord["origin"],
+    command,
+    origin: row.origin,
     ...(row.agent_kind ? { agentKind: row.agent_kind as "webmcp" | "assistant" } : {}),
     ...(row.approved_by_user !== null ? { approvedByUser: row.approved_by_user } : {}),
     ...(row.source_message_id ? { sourceMessageId: row.source_message_id } : {}),
-    status: row.status as ProjectEventRecord["status"],
+    status: row.status,
     evidence: row.evidence as ProjectEventRecord["evidence"],
     ...(row.provenance ? { provenance: row.provenance as unknown as ProjectEventRecord["provenance"] } : {}),
-    input: row.input as unknown as ProjectEventRecord["input"],
+    input,
     ...(row.output ? { output: row.output as unknown as ProjectEventRecord["output"] } : {}),
     ...(row.error ? { error: row.error as unknown as ProjectEventRecord["error"] } : {}),
     durationMs: row.duration_ms,
     createdAt: row.created_at,
   } as ProjectEventRecord;
+}
+
+function invalidStoredData<T>(message: string): ProjectDataResult<T> {
+  return errorResult<T>("UNKNOWN_ERROR", message, false);
 }
 
 function mapPostgrestError(error: { code?: string; message?: string; details?: string }): ProjectDataError {
@@ -135,7 +149,10 @@ function mapPostgrestError(error: { code?: string; message?: string; details?: s
   if (error.code === "23505" || error.code === "409") {
     return { code: "CONFLICT", message: "A conflict occurred with existing data.", retryable: false };
   }
-  if (error.code === "23514" || error.code === "22001" || error.code === "22P02") {
+  if (error.code === "429" || error.code === "PGRST003") {
+    return { code: "RATE_LIMITED", message, retryable: true };
+  }
+  if (error.code === "23503" || error.code === "23514" || error.code === "22001" || error.code === "22P02") {
     return { code: "INVALID_INPUT", message, retryable: false };
   }
   return { code: "UNKNOWN_ERROR", message, retryable: false };
@@ -166,8 +183,8 @@ export class SupabaseProjectDataAdapter implements ProjectDataPort {
       }
 
       const { data, error } = await query;
+      if (options?.signal?.aborted) return cancelled<ProjectSummary[]>();
       if (error) {
-        if (options?.signal?.aborted) return cancelled<ProjectSummary[]>();
         return { ok: false, error: mapPostgrestError(error) };
       }
 
@@ -202,8 +219,8 @@ export class SupabaseProjectDataAdapter implements ProjectDataPort {
       }
 
       const { data, error } = await query.maybeSingle();
+      if (options?.signal?.aborted) return cancelled<ProjectRecord>();
       if (error) {
-        if (options?.signal?.aborted) return cancelled<ProjectRecord>();
         return { ok: false, error: mapPostgrestError(error) };
       }
 
@@ -211,7 +228,11 @@ export class SupabaseProjectDataAdapter implements ProjectDataPort {
         return errorResult<ProjectRecord>("NOT_FOUND", "Project not found.");
       }
 
-      return { ok: true, data: mapDbProjectToRecord(data) };
+      try {
+        return { ok: true, data: mapDbProjectToRecord(data) };
+      } catch {
+        return invalidStoredData<ProjectRecord>("The stored project snapshot is invalid and was not restored.");
+      }
     } catch (err) {
       if (options?.signal?.aborted) return cancelled<ProjectRecord>();
       return errorResult<ProjectRecord>(
@@ -245,6 +266,7 @@ export class SupabaseProjectDataAdapter implements ProjectDataPort {
 
     try {
       const { data: userData, error: userError } = await this.client.auth.getUser();
+      if (options?.signal?.aborted) return cancelled<ProjectRecord>();
       if (userError || !userData?.user?.id) {
         return errorResult<ProjectRecord>("AUTH_REQUIRED", "Sign in before creating a project.");
       }
@@ -269,8 +291,8 @@ export class SupabaseProjectDataAdapter implements ProjectDataPort {
       }
 
       const { data, error } = await query.single();
+      if (options?.signal?.aborted) return cancelled<ProjectRecord>();
       if (error) {
-        if (options?.signal?.aborted) return cancelled<ProjectRecord>();
         return { ok: false, error: mapPostgrestError(error) };
       }
 
@@ -335,8 +357,8 @@ export class SupabaseProjectDataAdapter implements ProjectDataPort {
       }
 
       const { data, error } = await query.maybeSingle();
+      if (options?.signal?.aborted) return cancelled<ProjectRecord>();
       if (error) {
-        if (options?.signal?.aborted) return cancelled<ProjectRecord>();
         return { ok: false, error: mapPostgrestError(error) };
       }
 
@@ -412,8 +434,8 @@ export class SupabaseProjectDataAdapter implements ProjectDataPort {
       }
 
       const { data, error } = await query.maybeSingle();
+      if (options?.signal?.aborted) return cancelled<ProjectRecord>();
       if (error) {
-        if (options?.signal?.aborted) return cancelled<ProjectRecord>();
         return { ok: false, error: mapPostgrestError(error) };
       }
 
@@ -459,8 +481,8 @@ export class SupabaseProjectDataAdapter implements ProjectDataPort {
       }
 
       const { data, error } = await query.maybeSingle();
+      if (options?.signal?.aborted) return cancelled<{ projectId: string }>();
       if (error) {
-        if (options?.signal?.aborted) return cancelled<{ projectId: string }>();
         return { ok: false, error: mapPostgrestError(error) };
       }
 
@@ -491,7 +513,7 @@ export class SupabaseProjectDataAdapter implements ProjectDataPort {
       // Verify project accessibility first
       const projectCheck = await this.getProject(projectId, options);
       if (!projectCheck.ok) {
-        return errorResult<ProjectEventRecord[]>(projectCheck.error.code, projectCheck.error.message);
+        return { ok: false, error: projectCheck.error };
       }
 
       let query = this.client
@@ -505,13 +527,17 @@ export class SupabaseProjectDataAdapter implements ProjectDataPort {
       }
 
       const { data, error } = await query;
+      if (options?.signal?.aborted) return cancelled<ProjectEventRecord[]>();
       if (error) {
-        if (options?.signal?.aborted) return cancelled<ProjectEventRecord[]>();
         return { ok: false, error: mapPostgrestError(error) };
       }
 
-      const events = (data ?? []).map(mapDbEventToRecord);
-      return { ok: true, data: events };
+      try {
+        const events = (data ?? []).map(mapDbEventToRecord);
+        return { ok: true, data: events };
+      } catch {
+        return invalidStoredData<ProjectEventRecord[]>("Stored project activity is invalid and was not loaded.");
+      }
     } catch (err) {
       if (options?.signal?.aborted) return cancelled<ProjectEventRecord[]>();
       return errorResult<ProjectEventRecord[]>(
@@ -534,7 +560,7 @@ export class SupabaseProjectDataAdapter implements ProjectDataPort {
       // Verify project accessibility first
       const projectCheck = await this.getProject(projectId, options);
       if (!projectCheck.ok) {
-        return errorResult<ProjectEventRecord>(projectCheck.error.code, projectCheck.error.message);
+        return { ok: false, error: projectCheck.error };
       }
 
       let query = this.client
@@ -562,8 +588,8 @@ export class SupabaseProjectDataAdapter implements ProjectDataPort {
       }
 
       const { data, error } = await query.single();
+      if (options?.signal?.aborted) return cancelled<ProjectEventRecord>();
       if (error) {
-        if (options?.signal?.aborted) return cancelled<ProjectEventRecord>();
         return { ok: false, error: mapPostgrestError(error) };
       }
 

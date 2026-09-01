@@ -38,6 +38,10 @@ export async function setupMockSupabaseNetwork(page: Page) {
   const requests: Array<{ method: string; url: URL; body: Record<string, unknown> }> = [];
   const links: TestLink[] = [];
   const unexpected: string[] = [];
+  const projects: Array<Record<string, unknown>> = [];
+  const projectEvents: Array<Record<string, unknown>> = [];
+  let projectSequence = 0;
+  let eventSequence = 0;
 
   function issueSession() {
     const exp = Math.floor(Date.now() / 1000) + 3600;
@@ -151,8 +155,111 @@ export async function setupMockSupabaseNetwork(page: Page) {
     return reject(route, "unexpected_test_request", "Unhandled test auth request", 501);
   });
 
+  // Isolated PostgREST boundary for the project vertical slice. Production
+  // components still use SupabaseProjectDataAdapter and the real SDK.
+  await page.route("**/rest/v1/**", async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const method = request.method();
+    if (url.origin !== SUPABASE_TEST_ORIGIN) {
+      unexpected.push(`${method} unexpected data host`);
+      return route.abort("blockedbyclient");
+    }
+    const token = request.headers().authorization?.replace(/^Bearer /, "");
+    if (!token || !activeTokens.has(token)) {
+      return reject(route, "PGRST301", "Authentication required", 401);
+    }
+
+    const table = url.pathname.replace("/rest/v1/", "");
+    const body = (request.postDataJSON() ?? {}) as Record<string, unknown>;
+    const eq = (name: string) => url.searchParams.get(name)?.replace(/^eq\./, "");
+    const wantsObject = request.headers().accept?.includes("application/vnd.pgrst.object+json") ?? false;
+    const fulfillRows = async (rows: Array<Record<string, unknown>>) => {
+      if (wantsObject) {
+        if (rows.length !== 1) {
+          return json(route, {
+            code: "PGRST116",
+            details: `The result contains ${rows.length} rows`,
+            hint: null,
+            message: "JSON object requested, multiple (or no) rows returned",
+          }, 406);
+        }
+        return json(route, rows[0]);
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { "content-range": `0-${Math.max(0, rows.length - 1)}/${rows.length}` },
+        body: JSON.stringify(rows),
+      });
+    };
+
+    if (table === "projects") {
+      if (method === "GET") {
+        const id = eq("id");
+        const rows = projects
+          .filter(project => !id || project.id === id)
+          .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+        return fulfillRows(rows);
+      }
+      if (method === "POST") {
+        const now = new Date().toISOString();
+        const project = {
+          id: `10000000-0000-4000-8000-${String(++projectSequence).padStart(12, "0")}`,
+          owner_id: user.id,
+          title: body.title,
+          description: body.description ?? "",
+          active_pdb_id: body.active_pdb_id ?? null,
+          snapshot: body.snapshot,
+          revision: body.revision ?? 1,
+          created_at: now,
+          updated_at: now,
+        };
+        projects.push(project);
+        return fulfillRows([project]);
+      }
+      if (method === "PATCH") {
+        const id = eq("id");
+        const revision = Number(eq("revision"));
+        const project = projects.find(candidate => candidate.id === id &&
+          (!Number.isFinite(revision) || candidate.revision === revision));
+        if (!project) return fulfillRows([]);
+        Object.assign(project, body, { updated_at: new Date().toISOString() });
+        return fulfillRows([project]);
+      }
+      if (method === "DELETE") {
+        const id = eq("id");
+        const index = projects.findIndex(project => project.id === id);
+        if (index < 0) return fulfillRows([]);
+        const [deleted] = projects.splice(index, 1);
+        return fulfillRows([{ id: deleted.id }]);
+      }
+    }
+
+    if (table === "project_events") {
+      if (method === "GET") {
+        const projectId = eq("project_id");
+        return fulfillRows(projectEvents
+          .filter(event => !projectId || event.project_id === projectId)
+          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))));
+      }
+      if (method === "POST") {
+        const event = {
+          id: `20000000-0000-4000-8000-${String(++eventSequence).padStart(12, "0")}`,
+          ...body,
+          created_at: body.created_at ?? new Date().toISOString(),
+        };
+        projectEvents.push(event);
+        return fulfillRows([event]);
+      }
+    }
+
+    unexpected.push(`${method} /rest/v1/${table}`);
+    return reject(route, "PGRST000", "Unhandled test data request", 501);
+  });
+
   return {
-    requests, links, unexpected, failures,
+    requests, links, unexpected, failures, projects, projectEvents,
     count: (path: string, method = "POST") => requests.filter(request => request.url.pathname === `/auth/v1/${path}` && request.method === method).length,
     lastLink: (kind: LinkKind) => {
       const link = [...links].reverse().find(candidate => candidate.kind === kind);

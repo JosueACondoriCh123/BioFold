@@ -766,6 +766,19 @@
   font-style: italic;
 }
 
+.bf-proposal-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 7px 9px;
+  border: 1px solid #693235;
+  border-radius: 6px;
+  background: #311c1d;
+  color: #ffc4c2;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 /* Message Error */
 .bf-message-error {
   display: flex;

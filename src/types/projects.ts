@@ -13,6 +13,7 @@ import type {
   ResidueRef,
   StructureSummary,
 } from "./domain";
+import { parseCommandInput } from "../core/commandContracts";
 
 export type ViewerCameraState = readonly [
   number, number, number, number, number, number, number, number,
@@ -183,18 +184,84 @@ export function parseWorkspaceSnapshot(input: unknown): WorkspaceSnapshotV1 {
       typeof snapshot.surface.visible !== "boolean" ||
       typeof snapshot.surface.opacity !== "number" ||
       !Number.isFinite(snapshot.surface.opacity) || snapshot.surface.opacity < 0.1 ||
-      snapshot.surface.opacity > 1 || !Array.isArray(snapshot.selectedResidues)) {
+      snapshot.surface.opacity > 1 || !Array.isArray(snapshot.selectedResidues) ||
+      snapshot.selectedResidues.length > 20) {
     throw new Error("Workspace snapshot does not match schema version 1.");
   }
+  let structure: WorkspaceSnapshotV1["structure"];
   if (snapshot.structure !== null) {
-    const structure = snapshot.structure;
-    if (!structure || !/^[A-Z0-9]{4}$/.test(structure.pdbId) ||
-        (structure.source !== "fixture" && structure.source !== "rcsb")) {
+    const structureValue = snapshot.structure;
+    if (!structureValue || !/^[A-Z0-9]{4}$/.test(structureValue.pdbId) ||
+        (structureValue.source !== "fixture" && structureValue.source !== "rcsb") ||
+        (structureValue.source === "fixture" && structureValue.pdbId !== "1CRN" && structureValue.pdbId !== "4HHB")) {
       throw new Error("Workspace snapshot contains an invalid structure reference.");
     }
+    structure = { pdbId: structureValue.pdbId, source: structureValue.source };
+  } else {
+    structure = null;
   }
   const camera = snapshot.view.camera === null
     ? null
     : parseViewerCameraState(snapshot.view.camera);
-  return structuredClone({ ...snapshot, view: { ...snapshot.view, camera } }) as WorkspaceSnapshotV1;
+  const selectedResidues = snapshot.selectedResidues.length === 0
+    ? []
+    : parseCommandInput("focus_residues", { residues: snapshot.selectedResidues, label: true }).residues;
+
+  let measurement: DistanceMeasurement | undefined;
+  if (snapshot.measurement !== undefined) {
+    const value = snapshot.measurement;
+    if (!value || typeof value !== "object" || typeof value.angstroms !== "number" ||
+        !Number.isFinite(value.angstroms) || value.angstroms < 0) {
+      throw new Error("Workspace snapshot contains an invalid distance measurement.");
+    }
+    const refs = parseCommandInput("measure_distance", { from: value.from, to: value.to });
+    measurement = { ...refs, angstroms: value.angstroms };
+  }
+
+  let mutation: MutationPreview | undefined;
+  if (snapshot.mutation !== undefined) {
+    const value = snapshot.mutation;
+    if (!value || typeof value !== "object" || !Array.isArray(value.neighbors) ||
+        !Array.isArray(value.heuristics) || typeof value.originalAminoAcid !== "string" ||
+        typeof value.disclaimer !== "string") {
+      throw new Error("Workspace snapshot contains an invalid mutation context.");
+    }
+    parseCommandInput("preview_mutation_context", {
+      residue: value.residue,
+      toAminoAcid: value.targetAminoAcid,
+    });
+    mutation = structuredClone(value);
+  }
+  if (measurement && mutation) {
+    throw new Error("Workspace snapshot cannot contain a distance and mutation overlay simultaneously.");
+  }
+
+  let summary: StructureSummary | undefined;
+  if (snapshot.summary !== undefined) {
+    const value = snapshot.summary;
+    const counts = [value?.chainCount, value?.residueCount, value?.atomCount, value?.ligandCount, value?.waterCount];
+    if (!value || !Array.isArray(value.chains) || value.chains.some((chain) => typeof chain !== "string") ||
+        counts.some((count) => typeof count !== "number" || !Number.isInteger(count) || count < 0)) {
+      throw new Error("Workspace snapshot contains an invalid structure summary.");
+    }
+    summary = structuredClone(value);
+  }
+
+  return structuredClone({
+    schemaVersion: 1,
+    structure,
+    ...(summary ? { summary } : {}),
+    view: {
+      representation: snapshot.view.representation,
+      colorScheme: snapshot.view.colorScheme,
+      camera,
+    },
+    surface: {
+      visible: snapshot.surface.visible,
+      opacity: snapshot.surface.opacity,
+    },
+    selectedResidues,
+    ...(measurement ? { measurement } : {}),
+    ...(mutation ? { mutation } : {}),
+  });
 }

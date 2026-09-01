@@ -2,6 +2,16 @@ import type { Citation, CommandProposal } from "../../../types/assistant";
 
 export type InspectorTabId = "results" | "assistant";
 
+export type ProposalApplyResult = void | {
+  ok: boolean;
+  error?: { message: string };
+};
+
+export type ApplyProposalHandler = (
+  proposal: CommandProposal,
+  sourceMessageId: string,
+) => ProposalApplyResult | Promise<ProposalApplyResult>;
+
 export interface UiChatMessage {
   id: string;
   sender: "user" | "assistant" | "system";
@@ -10,6 +20,9 @@ export interface UiChatMessage {
   proposals?: CommandProposal[];
   appliedProposals?: Set<string>;
   dismissedProposals?: Set<string>;
+  applyingProposals?: Set<string>;
+  proposalErrors?: Record<string, string>;
+  sourceMessageId?: string;
   isStreaming?: boolean;
   error?: {
     code: string;

@@ -1,5 +1,6 @@
 import { Check, CloudOff, AlertTriangle, AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
 import type { PersistenceState } from "./types";
+import "./projects.css";
 
 export interface PersistenceIndicatorProps {
   status: PersistenceState;

@@ -1,13 +1,13 @@
-import { useState, useRef, type KeyboardEvent } from "react";
+import { useState, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { Layers3, Bot, ChevronRight, ChevronLeft } from "lucide-react";
-import type { AssistantClient, CommandProposal } from "../../../types/assistant";
+import type { AssistantClient } from "../../../types/assistant";
 import type {
   ActivityEntry,
   DistanceMeasurement,
   MutationPreview,
   StructureSummary,
 } from "../../../types/domain";
-import type { InspectorTabId } from "./types";
+import type { ApplyProposalHandler, InspectorTabId } from "./types";
 import { ResultsTab } from "./ResultsTab";
 import { AssistantChat } from "./AssistantChat";
 import "./assistant.css";
@@ -20,7 +20,8 @@ export interface InspectorPanelProps {
   measurement?: DistanceMeasurement | null;
   mutation?: MutationPreview | null;
   activityEntries?: ActivityEntry[];
-  onApplyProposal?: (proposal: CommandProposal) => void;
+  onApplyProposal?: ApplyProposalHandler;
+  resultsContent?: ReactNode;
   className?: string;
 }
 
@@ -33,6 +34,7 @@ export function InspectorPanel({
   mutation,
   activityEntries = [],
   onApplyProposal,
+  resultsContent,
   className = "",
 }: InspectorPanelProps) {
   const [activeTab, setActiveTab] = useState<InspectorTabId>(defaultTab);
@@ -126,14 +128,14 @@ export function InspectorPanel({
             hidden={activeTab !== "results"}
             className="bf-tab-content"
           >
-            {activeTab === "results" && (
+            {activeTab === "results" && (resultsContent ?? (
               <ResultsTab
                 summary={summary}
                 measurement={measurement}
                 mutation={mutation}
                 activityEntries={activityEntries}
               />
-            )}
+            ))}
           </div>
 
           <div

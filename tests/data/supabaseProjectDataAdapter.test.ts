@@ -335,6 +335,29 @@ describe("SupabaseProjectDataAdapter", () => {
     }
   });
 
+  it("rejects a corrupt stored snapshot instead of silently replacing it", async () => {
+    const { client } = createMockSupabaseClient({
+      projects: [{
+        id: "p-corrupt",
+        owner_id: "test-user-a",
+        title: "Corrupt project",
+        description: "",
+        active_pdb_id: "1CRN",
+        snapshot: { schemaVersion: 999 },
+        revision: 1,
+        created_at: "2026-09-01T01:00:00Z",
+        updated_at: "2026-09-01T01:00:00Z",
+      }],
+    });
+
+    const result = await new SupabaseProjectDataAdapter(client).getProject("p-corrupt");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("UNKNOWN_ERROR");
+      expect(result.error.message).toContain("not restored");
+    }
+  });
+
   it("updates project metadata and increments revision", async () => {
     const { client } = createMockSupabaseClient({
       userId: "user-123",

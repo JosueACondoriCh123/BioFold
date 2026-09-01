@@ -36,7 +36,7 @@ export function createDefaultAssistantMock(requestId = "phase2-request") {
         id: "biofold-evidence",
         title: "BioFold scientific evidence levels",
         publisher: "BioFold",
-        url: "https://example.invalid/biofold/evidence",
+        url: "https://github.com/JosueACondoriCh123/BioFold/blob/main/knowledge/evidence-levels.md",
         retrievedAt: "2026-09-01T00:00:00.000Z",
       }],
     },

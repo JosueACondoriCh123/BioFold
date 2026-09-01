@@ -232,8 +232,8 @@ describe("Assistant & Inspector UI Component Tests", () => {
       fireEvent.click(applyBtn);
 
       expect(handleApply).toHaveBeenCalledTimes(1);
-      expect(handleApply).toHaveBeenCalledWith(proposal);
-      expect(screen.getByText("Applied to scene")).toBeInTheDocument();
+      expect(handleApply).toHaveBeenCalledWith(proposal, "a1");
+      await waitFor(() => expect(screen.getByText("Applied to scene")).toBeInTheDocument());
     });
 
     it("handles dismissing a command proposal", async () => {
@@ -265,6 +265,49 @@ describe("Assistant & Inspector UI Component Tests", () => {
       fireEvent.click(dismissBtn);
 
       expect(screen.getByText("Proposal dismissed")).toBeInTheDocument();
+    });
+
+    it("does not mark a proposal as applied when the command fails", async () => {
+      const proposal: CommandProposal = {
+        id: "prop-failed",
+        command: "show_surface",
+        input: { visible: true, opacity: 0.55 },
+        rationale: "Inspect the molecular envelope.",
+      };
+      const mockClient = createMockAssistantClient([
+        { type: "meta", requestId: "r-failed", conversationId: "c-failed", assistantMessageId: "m-failed" },
+        { type: "proposals", proposals: [proposal] },
+        { type: "done", interrupted: false },
+      ]);
+      const apply = vi.fn(async () => ({ ok: false, error: { message: "Load a structure first." } }));
+      render(<AssistantChat assistantClient={mockClient} projectId="p1" onApplyProposal={apply} />);
+
+      fireEvent.change(screen.getByLabelText("Assistant prompt message"), { target: { value: "Show the surface" } });
+      fireEvent.click(screen.getByRole("button", { name: "Send message to assistant" }));
+      const applyButton = await screen.findByRole("button", { name: "Apply proposed command Show Surface" });
+      fireEvent.click(applyButton);
+
+      expect(await screen.findByText("Load a structure first.")).toBeInTheDocument();
+      expect(screen.queryByText("Applied to scene")).not.toBeInTheDocument();
+      expect(apply).toHaveBeenCalledWith(proposal, "m-failed");
+    });
+
+    it("marks an interrupted stream as cancelled and keeps Retry available", async () => {
+      const client: AssistantClient = {
+        async *stream(_request, options) {
+          yield { type: "meta", requestId: "r-cancel", conversationId: "c-cancel", assistantMessageId: "m-cancel" };
+          yield { type: "delta", text: "Partial answer" };
+          await new Promise<void>((resolve) => options?.signal?.addEventListener("abort", () => resolve(), { once: true }));
+        },
+      };
+      render(<AssistantChat assistantClient={client} projectId="p1" />);
+
+      fireEvent.change(screen.getByLabelText("Assistant prompt message"), { target: { value: "Explain this structure" } });
+      fireEvent.click(screen.getByRole("button", { name: "Send message to assistant" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Stop generating response" }));
+
+      expect(await screen.findByText("Response cancelled. You can retry the request.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Retry generating response" })).toBeInTheDocument();
     });
   });
 

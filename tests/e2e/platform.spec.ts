@@ -198,7 +198,7 @@ test("PKCE recovery updates password, accepts the new password and rejects the o
   const updatedPassword = "Changed-through-recovery-456!";
   await setPassword(page, updatedPassword);
   await expect(page).toHaveURL(`${PLATFORM_URL}/app`);
-  await expect(page.getByRole("status")).toContainText(/password.*updated/i);
+  await expect(page.getByRole("status").filter({ hasText: /password.*updated/i })).toBeVisible();
   expect(auth.requests.filter(request => request.method === "PUT").map(request => request.body.password)).toEqual([updatedPassword]);
   expect(auth.requests.filter(request => request.url.searchParams.get("grant_type") === "pkce")).toHaveLength(1);
   await page.goto("/reset-password");
@@ -328,6 +328,43 @@ test("failed profile save retains the server name and allows retry", async ({ pa
   await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled();
   await page.reload();
   await expect(page.getByLabel("Full name", { exact: true })).toHaveValue(TEST_NAME);
+});
+
+test("a saved project restores its molecular scene and audit trail after reload", async ({ page, auth }) => {
+  test.setTimeout(90_000);
+  await auth.seedSession();
+  await page.goto("/app");
+  await expect(page.getByRole("region", { name: "No projects" })).toBeVisible();
+  await page.getByRole("button", { name: "Create your first project" }).click();
+  await page.getByLabel("Project title").fill("Hemoglobin workspace");
+  await page.getByLabel("Initial PDB ID").fill("4HHB");
+  await page.getByRole("button", { name: "Create project", exact: true }).click();
+  await expect(page.getByText("Hemoglobin workspace", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("PDB Structure: 4HHB")).toBeVisible();
+
+  await page.getByRole("button", { name: "Open project Hemoglobin workspace in laboratory" }).click();
+  await expect(page.locator(".structure-pill strong")).toHaveText("4HHB", { timeout: 25_000 });
+  await page.getByRole("button", { name: "Stick", exact: true }).click();
+  await page.getByRole("button", { name: "Spectrum", exact: true }).click();
+  await page.getByRole("button", { name: "Measure distance", exact: true }).click();
+  await expect(page.locator(".result-value")).toContainText("Å");
+  const measuredDistance = Number.parseFloat(await page.locator(".result-value").innerText());
+  expect(measuredDistance).toBeGreaterThan(0);
+  await expect(page.getByRole("status", { name: "Storage status: saved" })).toBeVisible();
+  const savedSnapshot = auth.projects[0].snapshot as { view?: { representation?: string; colorScheme?: string }; measurement?: { angstroms?: number } };
+  expect(savedSnapshot.view).toMatchObject({ representation: "stick", colorScheme: "spectrum" });
+  expect(savedSnapshot.measurement?.angstroms).toBeCloseTo(measuredDistance, 2);
+  expect(auth.projectEvents.map(event => event.command)).toEqual(expect.arrayContaining([
+    "set_representation",
+    "measure_distance",
+  ]));
+
+  await page.reload();
+  await expect(page.locator(".structure-pill strong")).toHaveText("4HHB", { timeout: 25_000 });
+  await expect(page.getByRole("button", { name: "Stick", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Spectrum", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".result-value")).toContainText(measuredDistance.toFixed(2));
+  await expect(page.locator('.activity-item[data-command="measure_distance"]')).toBeVisible();
 });
 
 test("laboratory deactivates eight tools outside its route and preserves results on return", async ({ page, auth }) => {

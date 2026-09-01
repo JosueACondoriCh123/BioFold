@@ -129,12 +129,13 @@ describe("soft platform screens", () => {
     show(Callback); expect(await screen.findByRole("alert")).toHaveTextContent("This link could not be verified");
     expect(document.body.textContent).not.toContain("SECRET");
   });
-  it("offers dashboard examples without implying saved analyses", () => {
+  it("offers examples and explains saved versus unsaved work", () => {
     authenticated(); show(Dashboard);
     expect(screen.getByText("Welcome, Sam Lee")).toBeVisible();
     expect(screen.getByRole("link", { name: "Open laboratory" })).toHaveAttribute("href", "/app/lab");
     expect(screen.getByRole("link", { name: "Explore 4HHB" })).toHaveAttribute("href", "/app/lab?pdb=4HHB");
-    expect(screen.getByText(/Reloading or signing out clears/)).toBeVisible();
+    expect(screen.getByText(/Saved projects can be reopened after a reload/)).toBeVisible();
+    expect(screen.getByText(/signing out always clears the active 3D scene/)).toBeVisible();
   });
   it("updates the name, keeps email read-only, and reports logout errors", async () => {
     authenticated(); vi.mocked(context.value!.actions.signOut).mockRejectedValue(new Error("Sign out failed. Please retry."));

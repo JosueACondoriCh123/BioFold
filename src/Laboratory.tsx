@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import {
   Activity,
@@ -33,9 +33,21 @@ import { registerBioFoldTools, unregisterBioFoldTools } from "./adapters/webmcp"
 import { viewerPort } from "./adapters/viewerPort";
 import { geometryClient } from "./adapters/geometryClient";
 import { commandBus } from "./core/commandBus";
+import {
+  executionToProjectEvent,
+  projectEventToActivity,
+  restoreWorkspaceSnapshot,
+} from "./core/projectWorkspace";
+import { captureWorkspaceSnapshot } from "./core/workspaceSnapshot";
 import { workspaceSession } from "./core/workspaceSession";
+import { InspectorPanel } from "./features/assistant/ui";
+import { PersistenceIndicator } from "./features/projects/PersistenceIndicator";
+import type { PersistenceState } from "./features/projects/types";
+import { createDefaultAssistantMock } from "./phase2/mockAssistantClient";
 import { useAppStore } from "./store/appStore";
 import "./styles.css";
+import type { CommandProposal } from "./types/assistant";
+import type { ProjectDataPort, ProjectEventDraft, WorkspaceSnapshotV1 } from "./types/projects";
 import type {
   ActivityEntry,
   ColorScheme,
@@ -151,10 +163,31 @@ function ActivityItem({ entry }: { entry: ActivityEntry }) {
   );
 }
 
-function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initial" }: {
+function executeAssistantProposal(proposal: CommandProposal, sourceMessageId: string) {
+  const context = {
+    origin: "agent" as const,
+    agentKind: "assistant" as const,
+    approvedByUser: true,
+    sourceMessageId,
+  };
+  switch (proposal.command) {
+    case "load_structure": return commandBus.execute("load_structure", proposal.input, context);
+    case "get_structure_summary": return commandBus.execute("get_structure_summary", proposal.input, context);
+    case "focus_residues": return commandBus.execute("focus_residues", proposal.input, context);
+    case "set_representation": return commandBus.execute("set_representation", proposal.input, context);
+    case "show_surface": return commandBus.execute("show_surface", proposal.input, context);
+    case "measure_distance": return commandBus.execute("measure_distance", proposal.input, context);
+    case "preview_mutation_context": return commandBus.execute("preview_mutation_context", proposal.input, context);
+    case "reset_workspace": return commandBus.execute("reset_workspace", proposal.input, context);
+  }
+}
+
+function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initial", projectId, projectDataPort }: {
   active?: boolean;
   initialPdbId?: string;
   requestKey?: string;
+  projectId?: string;
+  projectDataPort?: ProjectDataPort;
 }) {
   const state = useAppStore();
   const [pdbId, setPdbId] = useState("1CRN");
@@ -167,8 +200,19 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
   const [mutationTarget, setMutationTarget] = useState("W");
   const [surfaceOpacity, setSurfaceOpacity] = useState(state.surfaceOpacity);
   const [spinning, setSpinning] = useState(false);
+  const [persistenceStatus, setPersistenceStatus] = useState<PersistenceState>("idle");
+  const [projectError, setProjectError] = useState<string | null>(null);
+  const [projectReloadToken, setProjectReloadToken] = useState(0);
   const lastRequest = useRef<string | null>(null);
   const workspaceRef = useRef<HTMLElement>(null);
+  const assistantClient = useMemo(() => createDefaultAssistantMock(), []);
+  const projectRevisionRef = useRef<number | null>(null);
+  const projectBlockedRef = useRef(false);
+  const projectSuppressRef = useRef(false);
+  const hydratedProjectRef = useRef<string | null>(null);
+  const persistenceControllerRef = useRef<AbortController | null>(null);
+  const persistenceQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const cameraTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (active) document.title = `${state.structure?.id ? `${state.structure.id} · ` : ""}Laboratory · BioFold 3D`;
@@ -186,6 +230,132 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
       : state.surfaceVisible
         ? `Surface · ${Math.round(state.surfaceOpacity * 100)}%`
         : "Surface off";
+
+  const enqueuePersistence = useCallback((
+    snapshot?: WorkspaceSnapshotV1,
+    event?: ProjectEventDraft,
+  ) => {
+    if (!projectId || !projectDataPort || projectBlockedRef.current) return;
+    const controller = persistenceControllerRef.current;
+    if (!controller || controller.signal.aborted) return;
+
+    persistenceQueueRef.current = persistenceQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (controller.signal.aborted || projectBlockedRef.current) return;
+        setPersistenceStatus("saving");
+        setProjectError(null);
+
+        if (snapshot) {
+          const expectedRevision = projectRevisionRef.current;
+          if (expectedRevision === null) return;
+          const saved = await projectDataPort.saveSnapshot({
+            projectId,
+            expectedRevision,
+            snapshot,
+          }, { signal: controller.signal });
+          if (controller.signal.aborted) return;
+          if (!saved.ok) {
+            projectBlockedRef.current = saved.error.code === "CONFLICT";
+            setPersistenceStatus(saved.error.code === "CONFLICT"
+              ? "conflict"
+              : typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "error");
+            setProjectError(saved.error.message);
+            return;
+          }
+          projectRevisionRef.current = saved.data.revision;
+        }
+
+        if (event) {
+          const appended = await projectDataPort.appendEvent(projectId, event, { signal: controller.signal });
+          if (controller.signal.aborted) return;
+          if (!appended.ok) {
+            setPersistenceStatus(typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "error");
+            setProjectError(appended.error.message);
+            return;
+          }
+        }
+
+        setPersistenceStatus("saved");
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setPersistenceStatus(typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "error");
+        setProjectError(error instanceof Error ? error.message : "The project could not be saved.");
+      });
+  }, [projectDataPort, projectId]);
+
+  useEffect(() => {
+    if (!active || !state.viewerReady || !projectId || !projectDataPort) return;
+    const identity = workspaceSession.getSnapshot().identity;
+    const attemptKey = `${identity}:${projectId}:${projectReloadToken}`;
+    if (hydratedProjectRef.current === attemptKey && projectRevisionRef.current !== null) return;
+    hydratedProjectRef.current = attemptKey;
+    const controller = new AbortController();
+    projectSuppressRef.current = true;
+    projectBlockedRef.current = false;
+    setPersistenceStatus("saving");
+    setProjectError(null);
+
+    void (async () => {
+      const loaded = await projectDataPort.getProject(projectId, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (!loaded.ok) throw new Error(loaded.error.message);
+      projectRevisionRef.current = loaded.data.revision;
+      setPdbId(loaded.data.activePdbId ?? initialPdbId);
+      await restoreWorkspaceSnapshot(loaded.data.snapshot, controller.signal);
+      const events = await projectDataPort.listEvents(projectId, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (!events.ok) throw new Error(events.error.message);
+      useAppStore.getState().replaceActivity(events.data.map(projectEventToActivity));
+      setPersistenceStatus("saved");
+    })().catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+      projectRevisionRef.current = null;
+      setPersistenceStatus(typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "error");
+      setProjectError(error instanceof Error ? error.message : "The saved project could not be opened.");
+    }).finally(() => {
+      if (!controller.signal.aborted) projectSuppressRef.current = false;
+    });
+
+    return () => {
+      controller.abort();
+      projectSuppressRef.current = false;
+    };
+  }, [active, initialPdbId, projectDataPort, projectId, projectReloadToken, state.viewerReady]);
+
+  useEffect(() => {
+    if (!active || !state.viewerReady || !projectId || !projectDataPort) return;
+    persistenceControllerRef.current?.abort();
+    const controller = new AbortController();
+    persistenceControllerRef.current = controller;
+    persistenceQueueRef.current = Promise.resolve();
+
+    const unsubscribeCommands = commandBus.subscribe((execution) => {
+      if (projectSuppressRef.current || controller.signal.aborted) return;
+      const snapshot = execution.result.ok && execution.command !== "get_structure_summary"
+        ? captureWorkspaceSnapshot()
+        : undefined;
+      enqueuePersistence(snapshot, executionToProjectEvent(execution));
+    });
+    const unsubscribeCamera = viewerPort.subscribeViewChanges((camera) => {
+      if (projectSuppressRef.current || controller.signal.aborted || projectRevisionRef.current === null) return;
+      if (cameraTimerRef.current) window.clearTimeout(cameraTimerRef.current);
+      cameraTimerRef.current = window.setTimeout(() => {
+        if (!controller.signal.aborted && !projectSuppressRef.current) {
+          enqueuePersistence(captureWorkspaceSnapshot(camera));
+        }
+      }, 700);
+    });
+
+    return () => {
+      controller.abort();
+      unsubscribeCommands();
+      unsubscribeCamera();
+      if (cameraTimerRef.current) window.clearTimeout(cameraTimerRef.current);
+      cameraTimerRef.current = null;
+    };
+  }, [active, enqueuePersistence, projectDataPort, projectId, state.viewerReady]);
 
   useLayoutEffect(() => {
     const unsubscribe = workspaceSession.subscribe((next, previous) => {
@@ -221,13 +391,13 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
   }, [active, state.viewerReady]);
 
   useEffect(() => {
-    if (!active || !state.viewerReady || lastRequest.current === requestKey) return;
+    if (!active || !state.viewerReady || projectId || lastRequest.current === requestKey) return;
     // A plain return to the lab preserves its current model. Explicit example links load anew.
     if (lastRequest.current !== null && requestKey === "initial") return;
     lastRequest.current = requestKey;
     setPdbId(initialPdbId);
     void commandBus.execute("load_structure", { pdbId: initialPdbId }, { origin: "human" });
-  }, [active, state.viewerReady, initialPdbId, requestKey]);
+  }, [active, state.viewerReady, initialPdbId, projectId, requestKey]);
 
   useEffect(() => setSurfaceOpacity(state.surfaceOpacity), [state.surfaceOpacity]);
 
@@ -312,6 +482,13 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
         <div className="header-actions">
           <button className="sample-chip" onClick={() => loadStructure("1CRN")}>1CRN</button>
           <button className="sample-chip" onClick={() => loadStructure("4HHB")}>4HHB</button>
+          {projectId && <PersistenceIndicator
+            status={persistenceStatus}
+            revision={projectRevisionRef.current ?? undefined}
+            onResolveConflict={() => setProjectReloadToken((value) => value + 1)}
+            onRetry={() => setProjectReloadToken((value) => value + 1)}
+            className="lab-persistence-indicator"
+          />}
           <div
             className={`agent-status ${state.webmcpStatus === "ready" ? "is-ready" : ""} ${state.webmcpStatus === "partial" ? "is-partial" : ""}`}
             title={state.webmcpError ?? (state.webmcpSupported ? "WebMCP tools registered" : "Human controls remain fully available")}
@@ -433,7 +610,16 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
           <div className="viewer-footer"><span><CircleDot size={13} /> Drag to rotate · scroll to zoom · right-drag to translate</span><span className="render-badge"><Zap size={12} /> WebGL live</span></div>
         </section>
 
-        <aside className="inspector-panel panel">
+        <InspectorPanel
+          assistantClient={assistantClient}
+          projectId={projectId ?? "unsaved-workspace"}
+          summary={state.summary}
+          measurement={state.measurement}
+          mutation={state.mutation}
+          activityEntries={state.activity}
+          onApplyProposal={executeAssistantProposal}
+          className="panel inspector-panel integrated-inspector"
+          resultsContent={<div className="legacy-inspector-content">
           <PanelTitle icon={<Activity size={18} />} eyebrow="Live analysis" title="Structure inspector" />
           <section className="summary-card">
             <div className="card-heading"><div><span>Current structure</span><strong>{state.structure?.id ?? "—"}</strong></div><div className="source-badge">{state.structure?.source ?? "waiting"}</div></div>
@@ -462,9 +648,14 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
             </div>
           </section>
           <button className="reset-button" onClick={() => void commandBus.execute("reset_workspace", { scope: "all" }, { origin: "human" })}><RefreshCcw size={15} /> Clear workspace</button>
-        </aside>
+          </div>}
+        />
       </main>
 
+      {projectError && <div className="project-sync-error" role="alert">
+        <span>{projectError}</span>
+        <button type="button" onClick={() => setProjectReloadToken((value) => value + 1)}>Reload saved project</button>
+      </div>}
       {state.error && <div className="error-toast" role="alert"><div><Info size={17} /><span>{state.error}</span></div><button onClick={() => state.setError(undefined)} aria-label="Dismiss error"><X size={16} /></button></div>}
     </div>
   );

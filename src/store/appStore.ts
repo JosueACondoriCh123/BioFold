@@ -46,6 +46,7 @@ interface AppState {
   setMeasurement: (measurement?: DistanceMeasurement) => void;
   setMutation: (mutation?: MutationPreview) => void;
   addActivity: (entry: ActivityEntry) => void;
+  replaceActivity: (entries: ActivityEntry[]) => void;
   resetViewState: () => void;
   clearWorkspace: () => void;
   clearSession: () => void;
@@ -97,6 +98,7 @@ export const useAppStore = create<AppState>((set) => ({
   setMutation: (mutation) => set({ mutation }),
   addActivity: (entry) =>
     set((state) => ({ activity: [entry, ...state.activity].slice(0, 50) })),
+  replaceActivity: (activity) => set({ activity: activity.slice(0, 50) }),
   resetViewState: () => set({ ...viewDefaults, error: undefined }),
   clearWorkspace: () =>
     set({ structure: undefined, summary: undefined, error: undefined, ...viewDefaults }),

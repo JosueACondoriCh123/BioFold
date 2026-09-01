@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Plus, FolderKanban, LoaderCircle, AlertCircle, RefreshCw } from "lucide-react";
 import type {
   CreateProjectInput,
@@ -7,6 +7,7 @@ import type {
   ProjectSummary,
   UpdateProjectInput,
 } from "../../types/projects";
+import { createEmptyWorkspaceSnapshot } from "../../types/projects";
 import { ProjectCard } from "./ProjectCard";
 import { EmptyProjectsState } from "./EmptyProjectsState";
 import { ProjectDialog } from "./ProjectDialog";
@@ -36,12 +37,26 @@ export function ProjectsDashboard({
   const [deletingProject, setDeletingProject] = useState<ProjectSummary | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const loadControllerRef = useRef<AbortController | null>(null);
+  const mutationControllerRef = useRef<AbortController | null>(null);
+  const notificationTimerRef = useRef<number | null>(null);
 
   const loadProjects = useCallback(async (showLoadingState = true) => {
+    loadControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadControllerRef.current = controller;
     if (showLoadingState) setIsLoading(true);
     setError(null);
 
-    const result = await dataPort.listProjects();
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setPersistenceStatus("offline");
+      if (showLoadingState) setIsLoading(false);
+      return;
+    }
+
+    const result = await dataPort.listProjects({ signal: controller.signal });
+    if (controller.signal.aborted) return;
     if (result.ok) {
       setProjects(result.data);
       setPersistenceStatus("saved");
@@ -54,18 +69,36 @@ export function ProjectsDashboard({
 
   useEffect(() => {
     void loadProjects(true);
+    return () => loadControllerRef.current?.abort();
+  }, [loadProjects]);
+
+  useEffect(() => {
+    const handleOffline = () => setPersistenceStatus("offline");
+    const handleOnline = () => { void loadProjects(false); };
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+      mutationControllerRef.current?.abort();
+      if (notificationTimerRef.current) window.clearTimeout(notificationTimerRef.current);
+    };
   }, [loadProjects]);
 
   // Flash notification helper
   const showNotification = (type: "success" | "error", message: string) => {
     setNotification({ type, message });
-    setTimeout(() => {
+    if (notificationTimerRef.current) window.clearTimeout(notificationTimerRef.current);
+    notificationTimerRef.current = window.setTimeout(() => {
       setNotification((curr) => (curr?.message === message ? null : curr));
     }, 4000);
   };
 
   // Create Project handler
   async function handleCreateProject(data: { title: string; description: string; pdbId?: string }) {
+    mutationControllerRef.current?.abort();
+    const controller = new AbortController();
+    mutationControllerRef.current = controller;
     setIsSaving(true);
     setDialogError(null);
     setPersistenceStatus("saving");
@@ -73,9 +106,11 @@ export function ProjectsDashboard({
     const input: CreateProjectInput = {
       title: data.title,
       description: data.description,
+      snapshot: createEmptyWorkspaceSnapshot(data.pdbId ?? "1CRN"),
     };
 
-    const result = await dataPort.createProject(input);
+    const result = await dataPort.createProject(input, { signal: controller.signal });
+    if (controller.signal.aborted) return;
     setIsSaving(false);
 
     if (result.ok) {
@@ -92,6 +127,9 @@ export function ProjectsDashboard({
   // Edit / Rename Project handler
   async function handleUpdateProject(data: { title: string; description: string }) {
     if (!editingProject) return;
+    mutationControllerRef.current?.abort();
+    const controller = new AbortController();
+    mutationControllerRef.current = controller;
     setIsSaving(true);
     setDialogError(null);
     setPersistenceStatus("saving");
@@ -103,7 +141,8 @@ export function ProjectsDashboard({
       description: data.description,
     };
 
-    const result = await dataPort.updateProject(input);
+    const result = await dataPort.updateProject(input, { signal: controller.signal });
+    if (controller.signal.aborted) return;
     setIsSaving(false);
 
     if (result.ok) {
@@ -125,10 +164,15 @@ export function ProjectsDashboard({
   // Delete Project handler
   async function handleDeleteConfirm() {
     if (!deletingProject) return;
+    mutationControllerRef.current?.abort();
+    const controller = new AbortController();
+    mutationControllerRef.current = controller;
     setIsSaving(true);
+    setDeleteError(null);
     setPersistenceStatus("saving");
 
-    const result = await dataPort.deleteProject(deletingProject.id);
+    const result = await dataPort.deleteProject(deletingProject.id, { signal: controller.signal });
+    if (controller.signal.aborted) return;
     setIsSaving(false);
 
     if (result.ok) {
@@ -139,7 +183,7 @@ export function ProjectsDashboard({
       await loadProjects(false);
     } else {
       setPersistenceStatus("error");
-      showNotification("error", `Failed to delete project: ${result.error.message}`);
+      setDeleteError(result.error.message);
     }
   }
 
@@ -221,7 +265,7 @@ export function ProjectsDashboard({
               project={project}
               onOpen={onOpenProject}
               onEdit={(p) => setEditingProject(p)}
-              onDelete={(p) => setDeletingProject(p)}
+              onDelete={(p) => { setDeleteError(null); setDeletingProject(p); }}
             />
           ))}
         </div>
@@ -267,8 +311,9 @@ export function ProjectsDashboard({
         isOpen={Boolean(deletingProject)}
         projectTitle={deletingProject?.title ?? ""}
         isDeleting={isSaving}
+        error={deleteError}
         onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeletingProject(null)}
+        onCancel={() => { setDeletingProject(null); setDeleteError(null); }}
       />
     </section>
   );

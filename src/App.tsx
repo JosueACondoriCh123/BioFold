@@ -1,10 +1,12 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 import { WorkspaceNav } from "./components/platform/PlatformLayout";
 import { workspaceSession } from "./core/workspaceSession";
 import type { AuthContextValue, PlatformPages } from "./integration/contracts";
 import { ErrorBoundary } from "./integration/ErrorBoundary";
 import { IntegrationStatus } from "./integration/IntegrationStatus";
+import { getProjectDataPort } from "./data";
+import type { ProjectDataPort } from "./types/projects";
 import "./integration/integration.css";
 import "./platform.css";
 
@@ -25,18 +27,23 @@ function RecoveryGate({ auth, children }: { auth: AuthContextValue; children: Re
   return <IntegrationStatus title="Recovery link required" message="Request a new password reset email, then open its link to continue." recovery />;
 }
 
-function LaboratorySession({ active }: { active: boolean }) {
+function LaboratorySession({ active, projectDataPort }: { active: boolean; projectDataPort: ProjectDataPort | null }) {
   const [started, setStarted] = useState(false);
   const location = useLocation();
-  const requested = new URLSearchParams(location.search).get("pdb");
+  const search = new URLSearchParams(location.search);
+  const requested = search.get("pdb");
+  const requestedProject = search.get("project");
   const validRequest = requested && /^[a-z0-9]{4}$/i.test(requested) ? requested.toUpperCase() : undefined;
+  const validProject = requestedProject && /^[a-z0-9-]{1,128}$/i.test(requestedProject) ? requestedProject : undefined;
   const pdbId = validRequest ?? "1CRN";
   useEffect(() => { if (active) setStarted(true); }, [active]);
   if (!started) return null;
   return <div hidden={!active} inert={!active} aria-hidden={!active} data-testid="laboratory-session">
     <Suspense fallback={<IntegrationStatus title="Preparing the laboratory" message="Loading the 3D viewer…" />}>
       <Laboratory active={active} initialPdbId={pdbId}
-        requestKey={active && validRequest ? `${location.key}:${pdbId}` : "initial"} />
+        projectId={validProject}
+        projectDataPort={projectDataPort ?? undefined}
+        requestKey={active && (validRequest || validProject) ? `${location.key}:${validProject ?? "workspace"}:${pdbId}` : "initial"} />
     </Suspense>
   </div>;
 }
@@ -46,6 +53,7 @@ export default function App({ auth, pages }: { auth: AuthContextValue; pages: Pl
   const location = useLocation();
   const { state, actions } = auth;
   const userId = state.status === "authenticated" && !state.recoveryAllowed ? state.user?.id ?? null : null;
+  const projectDataPort = useMemo(() => userId ? getProjectDataPort(userId) : null, [userId]);
   const laboratoryActive = Boolean(userId) && location.pathname.replace(/\/$/, "") === "/app/lab";
 
   useLayoutEffect(() => {
@@ -88,6 +96,6 @@ export default function App({ auth, pages }: { auth: AuthContextValue; pages: Pl
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
-    {userId && <LaboratorySession key={userId} active={laboratoryActive} />}
+    {userId && <LaboratorySession key={userId} active={laboratoryActive} projectDataPort={projectDataPort} />}
   </ErrorBoundary>;
 }

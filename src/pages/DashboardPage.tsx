@@ -1,13 +1,25 @@
+import { useMemo } from "react";
 import { ArrowUpRight, ArrowRight, FlaskConical, Layers3, MousePointer2, ClipboardList, Info } from "lucide-react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { useAuth } from "../auth/useAuth";
 import { Footer, PlatformPage } from "../components/platform/PlatformLayout";
 import { Feedback } from "../components/platform/AuthForm";
+import { getProjectDataPort } from "../data";
+import { ProjectsDashboard } from "../features/projects";
+import type { ProjectRecord, ProjectSummary } from "../types/projects";
 
 export default function DashboardPage() {
   const { state } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const name = state.user?.displayName?.trim();
+  const userId = state.user?.id ?? "unavailable-user";
+  const projectDataPort = useMemo(() => getProjectDataPort(userId), [userId]);
+  const openProject = (project: ProjectSummary | ProjectRecord) => {
+    const params = new URLSearchParams({ project: project.id });
+    if (project.activePdbId) params.set("pdb", project.activePdbId);
+    navigate(`/app/lab?${params.toString()}`);
+  };
   return <PlatformPage name="dashboard" title="Your workspace"><a className="bf-skip" href="#main-content">Skip to content</a><main className="bf-container bf-private-main" id="main-content">
     <header className="bf-page-heading"><span className="bf-eyebrow">{name ? `Welcome, ${name}` : "Welcome to BioFold"}</span><h1>Your laboratory,<br /><span>ready when you are.</span></h1><p>Pick up your exploration or start with a structure below.</p></header>
     {location.state?.passwordUpdated === true && <Feedback message="Your password has been updated." />}
@@ -17,6 +29,7 @@ export default function DashboardPage() {
       <p className="bf-inline-note"><Info size={16} aria-hidden="true" /> Choosing an example replaces the structure currently in your workspace.</p>
     </section>
     <section className="bf-dashboard-section" aria-labelledby="guide-title"><h2 id="guide-title">Get oriented in three steps.</h2><ol className="bf-quick-guide"><li><Layers3 aria-hidden="true" /><div><h3>01 / Set your view</h3><p>Choose a representation and color scheme.</p></div></li><li><MousePointer2 aria-hidden="true" /><div><h3>02 / Inspect a detail</h3><p>Focus on residues or measure between atoms.</p></div></li><li><ClipboardList aria-hidden="true" /><div><h3>03 / Review the evidence</h3><p>Read the result and its human or agent activity entry.</p></div></li></ol></section>
-    <p className="bf-session-note">Workspace contents are kept in this tab only. Reloading or signing out clears the scene and activity.</p>
+    <ProjectsDashboard dataPort={projectDataPort} onOpenProject={openProject} />
+    <p className="bf-session-note">Unsaved laboratory work remains in this tab. Saved projects can be reopened after a reload; signing out always clears the active 3D scene.</p>
   </main><Footer /></PlatformPage>;
 }

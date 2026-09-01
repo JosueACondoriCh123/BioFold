@@ -1,10 +1,12 @@
-import { Check, X, Sparkles, CheckCircle2 } from "lucide-react";
+import { Check, X, Sparkles, CheckCircle2, LoaderCircle, AlertCircle } from "lucide-react";
 import type { CommandProposal } from "../../../types/assistant";
 
 export interface CommandProposalCardProps {
   proposal: CommandProposal;
   isApplied?: boolean;
   isDismissed?: boolean;
+  isApplying?: boolean;
+  error?: string;
   onApply: (proposal: CommandProposal) => void;
   onDismiss: (proposal: CommandProposal) => void;
 }
@@ -51,6 +53,8 @@ export function CommandProposalCard({
   proposal,
   isApplied = false,
   isDismissed = false,
+  isApplying = false,
+  error,
   onApply,
   onDismiss,
 }: CommandProposalCardProps) {
@@ -95,14 +99,17 @@ export function CommandProposalCard({
               type="button"
               className="bf-button bf-proposal-apply-btn"
               onClick={() => onApply(proposal)}
+              disabled={isApplying}
               aria-label={`Apply proposed command ${formatCommandName(proposal.command)}`}
             >
-              <Check size={14} aria-hidden="true" /> Apply
+              {isApplying ? <LoaderCircle className="bf-spin" size={14} aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}
+              {isApplying ? "Applying…" : "Apply"}
             </button>
             <button
               type="button"
               className="bf-button bf-button-ghost bf-proposal-dismiss-btn"
               onClick={() => onDismiss(proposal)}
+              disabled={isApplying}
               aria-label={`Dismiss proposal ${formatCommandName(proposal.command)}`}
             >
               <X size={14} aria-hidden="true" /> Dismiss
@@ -110,6 +117,7 @@ export function CommandProposalCard({
           </>
         )}
       </div>
+      {error && <div className="bf-proposal-error" role="alert"><AlertCircle size={13} aria-hidden="true" />{error}</div>}
     </div>
   );
 }

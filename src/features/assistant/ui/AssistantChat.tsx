@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, Sparkles, AlertTriangle } from "lucide-react";
+import { Bot, Sparkles } from "lucide-react";
 import type {
   AssistantClient,
   AssistantRequest,
   CommandProposal,
 } from "../../../types/assistant";
-import type { UiChatMessage } from "./types";
+import type { ApplyProposalHandler, UiChatMessage } from "./types";
 import { ChatMessageItem } from "./ChatMessageItem";
 import { ChatInputArea } from "./ChatInputArea";
 
@@ -14,7 +14,7 @@ export interface AssistantChatProps {
   projectId: string;
   conversationId?: string;
   initialMessages?: UiChatMessage[];
-  onApplyProposal?: (proposal: CommandProposal) => void;
+  onApplyProposal?: ApplyProposalHandler;
 }
 
 export function AssistantChat({
@@ -26,7 +26,6 @@ export function AssistantChat({
 }: AssistantChatProps) {
   const [messages, setMessages] = useState<UiChatMessage[]>(initialMessages);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [activeError, setActiveError] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
@@ -51,8 +50,6 @@ export function AssistantChat({
   }, []);
 
   const handleSendMessage = async (userText: string) => {
-    setActiveError(null);
-
     const userMessageId = `user-msg-${Date.now()}-${messageCounterRef.current++}`;
     const assistantMessageId = `asst-msg-${Date.now()}-${messageCounterRef.current++}`;
     const now = new Date().toISOString();
@@ -87,9 +84,11 @@ export function AssistantChat({
 
     try {
       const stream = assistantClient.stream(request, { signal: controller.signal });
+      let terminalEventReceived = false;
 
       for await (const event of stream) {
         if (controller.signal.aborted) break;
+        if (event.type === "done" || event.type === "error") terminalEventReceived = true;
 
         setMessages((prev) => {
           return prev.map((msg) => {
@@ -97,7 +96,7 @@ export function AssistantChat({
 
             switch (event.type) {
               case "meta":
-                return { ...msg };
+                return { ...msg, sourceMessageId: event.assistantMessageId };
               case "delta":
                 return { ...msg, content: msg.content + event.text };
               case "citations":
@@ -117,6 +116,9 @@ export function AssistantChat({
             }
           });
         });
+      }
+      if (!controller.signal.aborted && !terminalEventReceived) {
+        throw new Error("The assistant stream ended before a completion event was received.");
       }
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -147,6 +149,11 @@ export function AssistantChat({
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       setIsStreaming(false);
+      setMessages((prev) => prev.map((message) => message.isStreaming ? {
+        ...message,
+        isStreaming: false,
+        error: { code: "CANCELLED", message: "Response cancelled. You can retry the request.", retryable: true },
+      } : message));
     }
   };
 
@@ -158,16 +165,44 @@ export function AssistantChat({
     }
   };
 
-  const handleApplyProposal = (msgId: string, proposal: CommandProposal) => {
+  const handleApplyProposal = async (msgId: string, proposal: CommandProposal, sourceMessageId: string) => {
     setMessages((prev) =>
       prev.map((m) => {
         if (m.id !== msgId) return m;
-        const applied = new Set(m.appliedProposals ?? []);
-        applied.add(proposal.id);
-        return { ...m, appliedProposals: applied };
+        const applying = new Set(m.applyingProposals ?? []);
+        applying.add(proposal.id);
+        const proposalErrors = { ...m.proposalErrors };
+        delete proposalErrors[proposal.id];
+        return { ...m, applyingProposals: applying, proposalErrors };
       }),
     );
-    onApplyProposal?.(proposal);
+    try {
+      if (!onApplyProposal) throw new Error("The molecular scene is not ready to apply proposals.");
+      const result = await onApplyProposal(proposal, sourceMessageId);
+      if (result && !result.ok) {
+        throw new Error(result.error?.message ?? "The proposed command could not be applied.");
+      }
+      setMessages((prev) => prev.map((m) => {
+        if (m.id !== msgId) return m;
+        const applying = new Set(m.applyingProposals ?? []);
+        applying.delete(proposal.id);
+        const applied = new Set(m.appliedProposals ?? []);
+        applied.add(proposal.id);
+        return { ...m, applyingProposals: applying, appliedProposals: applied };
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The proposed command could not be applied.";
+      setMessages((prev) => prev.map((m) => {
+        if (m.id !== msgId) return m;
+        const applying = new Set(m.applyingProposals ?? []);
+        applying.delete(proposal.id);
+        return {
+          ...m,
+          applyingProposals: applying,
+          proposalErrors: { ...m.proposalErrors, [proposal.id]: message },
+        };
+      }));
+    }
   };
 
   const handleDismissProposal = (msgId: string, proposal: CommandProposal) => {
@@ -197,13 +232,6 @@ export function AssistantChat({
           </div>
         </div>
       </header>
-
-      {activeError && (
-        <div className="bf-chat-error-banner" role="alert">
-          <AlertTriangle size={15} aria-hidden="true" />
-          <span>{activeError}</span>
-        </div>
-      )}
 
       <div className="bf-chat-messages-container" role="log" aria-live="polite">
         {messages.length === 0 ? (
@@ -244,7 +272,7 @@ export function AssistantChat({
             <ChatMessageItem
               key={message.id}
               message={message}
-              onApplyProposal={(p) => handleApplyProposal(message.id, p)}
+              onApplyProposal={(proposal, sourceMessageId) => handleApplyProposal(message.id, proposal, sourceMessageId)}
               onDismissProposal={(p) => handleDismissProposal(message.id, p)}
               onRetry={handleRetryLastMessage}
             />

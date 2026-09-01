@@ -68,9 +68,11 @@ describe("Projects Feature Component Tests", () => {
 
     const titleInput = screen.getByLabelText(/Project title/i);
     const descInput = screen.getByLabelText(/Description/i);
+    const pdbInput = screen.getByLabelText(/Initial PDB ID/i);
 
     fireEvent.change(titleInput, { target: { value: "Crambin Disulfide Bonds" } });
     fireEvent.change(descInput, { target: { value: "Mapping CYS-CYS bridges" } });
+    fireEvent.change(pdbInput, { target: { value: "4HHB" } });
 
     const submitBtn = screen.getByRole("button", { name: "Create project" });
     fireEvent.click(submitBtn);
@@ -80,6 +82,7 @@ describe("Projects Feature Component Tests", () => {
     });
 
     expect(screen.getByText("Crambin Disulfide Bonds")).toBeInTheDocument();
+    expect(screen.getByText("4HHB")).toBeInTheDocument();
     expect(screen.getByText(/Project “Crambin Disulfide Bonds” created/i)).toBeInTheDocument();
   });
 

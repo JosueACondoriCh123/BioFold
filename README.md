@@ -14,6 +14,7 @@ BioFold 3D bridges the gap between molecular visualization and autonomous agenti
 - **Workspace Navigation:** Private application suite with home dashboard (`/app`), 3D laboratory (`/app/lab`), and account profile settings (`/app/account`).
 - **Protected Routing & Deep Links:** Automatic redirection of unauthenticated access to `/login?next=...`, preserving structure queries (e.g. `?pdb=4HHB`) upon sign-in.
 - **Scene Preservation:** Molecular scene and camera state remain active in memory when navigating between workspace tabs and only teardown upon explicit logout.
+- **Private Saved Projects:** Authenticated users can create, rename, delete and reopen molecular workspaces; confirmed view state, measurements and audited commands are restored after reload.
 
 ### 2. Interactive 3D Molecular Laboratory
 - **High-Performance 3Dmol.js Viewer:** Hardware-accelerated WebGL molecular graphics with cartoon, stick, sphere, and line representations.
@@ -134,22 +135,22 @@ pnpm lint
 # 2. Type checking (Strict TypeScript)
 pnpm typecheck
 
-# 3. Unit and integration tests (209 tests across 19 suites in Vitest)
+# 3. Unit and integration tests (279 tests across 30 suites in Vitest)
 pnpm test
 
 # 4. Production build verification (Vite)
 pnpm build
 
-# 5. Full browser End-to-End test suite (28 tests across 3 suites in Playwright)
+# 5. Full browser End-to-End test suite (52 tests across 4 suites in Playwright)
 pnpm test:e2e
 ```
 
-### Phase 2 development foundation
+### Phase 2 integration status
 
-The integration branch includes frozen persistence and assistant contracts, in-memory adapters, a versioned knowledge manifest, local Supabase configuration and a fail-closed Edge Function scaffold. See [Phase 2 development](docs/PHASE2_DEVELOPMENT.md) and [external-agent coordination](docs/PHASE2_COORDINATION.md).
+The integration branch now includes private project CRUD, optimistic snapshot persistence, durable activity restoration, an Assistant inspector whose proposals require explicit confirmation, hardened RLS migrations, isolated PostgREST/Auth QA, a versioned knowledge manifest and a fail-closed Edge Function scaffold. The Assistant still uses a local deterministic client; OpenRouter and production RAG remain a later server-side gate. See [Phase 2 development](docs/PHASE2_DEVELOPMENT.md) and [external-agent coordination](docs/PHASE2_COORDINATION.md).
 
 ### E2E Test Coverage:
-- `tests/e2e/platform.spec.ts`: Landing page isolation, protected routes, login, signup, verification, recovery, profile editing, logout, OAuth error resilience, and 404 handling.
+- `tests/e2e/platform.spec.ts`: Landing isolation, protected routes, complete auth/recovery, private project CRUD boundary, persisted scene restoration, profile editing, logout, OAuth resilience, and 404 handling.
 - `tests/e2e/laboratorySession.spec.ts`: 3D scene and camera preservation across workspace navigation, clean logout teardown, and example loaders.
 - `tests/e2e/smoke.spec.ts`: Agent executing all 8 WebMCP tools in tandem with human UI actions, surface progress HUD, and audit trails.
 

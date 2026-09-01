@@ -31,21 +31,43 @@ export function ProjectDialog({
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (isOpen) {
+      openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setTitle(initialData?.title ?? "");
       setDescription(initialData?.description ?? "");
       setPdbId(initialData?.activePdbId ?? "");
       setClientError(null);
-      setTimeout(() => titleInputRef.current?.focus(), 50);
+      const timer = window.setTimeout(() => titleInputRef.current?.focus(), 0);
+      return () => {
+        window.clearTimeout(timer);
+        openerRef.current?.focus({ preventScroll: true });
+      };
     }
-  }, [isOpen, initialData]);
+  }, [isOpen, initialData?.title, initialData?.description, initialData?.activePdbId]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape" && isOpen && !isSaving) {
         onClose();
+        return;
+      }
+      if (event.key === "Tab" && isOpen && dialogRef.current) {
+        const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        ));
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (!first || !last) return;
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -94,6 +116,7 @@ export function ProjectDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="project-dialog-title"
+        aria-describedby={displayedError ? "project-dialog-error" : undefined}
       >
         <header className="bf-modal-header">
           <h2 id="project-dialog-title">
@@ -112,7 +135,7 @@ export function ProjectDialog({
 
         <form onSubmit={handleSubmit} className="bf-modal-form">
           {displayedError && (
-            <div className="bf-modal-error" role="alert">
+            <div id="project-dialog-error" className="bf-modal-error" role="alert">
               <AlertCircle size={16} aria-hidden="true" />
               <span>{displayedError}</span>
             </div>
@@ -132,6 +155,8 @@ export function ProjectDialog({
               maxLength={120}
               disabled={isSaving}
               required
+              aria-invalid={Boolean(clientError)}
+              aria-describedby={displayedError ? "project-dialog-error" : undefined}
             />
             <span className="bf-char-count">{title.length}/120</span>
           </div>
