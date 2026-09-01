@@ -20,7 +20,8 @@ class GeometryClient {
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
   >();
 
-  constructor() {
+  private ensureWorker() {
+    if (this.worker) return;
     if (typeof Worker !== "undefined" && import.meta.env.MODE !== "test") {
       this.worker = new Worker(new URL("../workers/geometry.worker.ts", import.meta.url), {
         type: "module",
@@ -39,17 +40,32 @@ class GeometryClient {
           pending.reject(new Error(event.data.error?.message ?? "Geometry worker failed."));
         }
       };
+      this.worker.onerror = () => this.dispose(new Error("The geometry worker failed."));
+      this.worker.onmessageerror = () => this.dispose(new Error("The geometry worker response could not be read."));
     }
   }
 
+  dispose(error: Error = new DOMException("Cancelled", "AbortError")) {
+    this.worker?.terminate();
+    this.worker = null;
+    const pending = [...this.pending.values()];
+    this.pending.clear();
+    for (const request of pending) request.reject(error);
+  }
+
   private request<T>(payload: Record<string, unknown>, fallback: () => T, signal?: AbortSignal): Promise<T> {
-    if (!this.worker) return Promise.resolve(fallback());
     if (signal?.aborted) return Promise.reject(new DOMException("Cancelled", "AbortError"));
+    this.ensureWorker();
+    if (!this.worker) return Promise.resolve().then(() => {
+      if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
+      return fallback();
+    });
 
     const id = crypto.randomUUID();
     return new Promise<T>((resolve, reject) => {
       const cancel = () => {
         this.pending.delete(id);
+        signal?.removeEventListener("abort", cancel);
         reject(new DOMException("Cancelled", "AbortError"));
       };
       signal?.addEventListener("abort", cancel, { once: true });
@@ -63,7 +79,13 @@ class GeometryClient {
           reject(error);
         },
       });
-      this.worker?.postMessage({ id, ...payload });
+      try {
+        this.worker?.postMessage({ id, ...payload });
+      } catch (error) {
+        this.pending.delete(id);
+        signal?.removeEventListener("abort", cancel);
+        reject(error);
+      }
     });
   }
 

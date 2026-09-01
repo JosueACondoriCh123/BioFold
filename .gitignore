@@ -13,3 +13,7 @@ test-results/
 .qa_*/
 *.log
 *.docx
+
+# Accidental nested workspaces; never publish them as Git submodules.
+/a/
+/untitled-project/

@@ -1,23 +1,23 @@
 import { geometryClient } from "../adapters/geometryClient";
-import { viewerPort } from "../adapters/viewerPort";
+import { ViewerPortError, viewerPort, type PreparedStructure } from "../adapters/viewerPort";
 import {
   StructureGatewayError,
   structureGateway,
 } from "../adapters/structureGateway";
+import { CommandValidationError, parseCommandInput } from "./commandContracts";
 import { GeometryError, findResidueAtoms } from "./geometry";
-import { AMINO_ACID_CODES, compareAminoAcids, toOneLetterCode } from "./mutations";
+import { compareAminoAcids, toOneLetterCode } from "./mutations";
 import { useAppStore } from "../store/appStore";
+import { combineSignals, workspaceSession } from "./workspaceSession";
 import type {
   ActivityEntry,
-  AtomRef,
-  ColorScheme,
   CommandContext,
   CommandErrorCode,
+  CommandInput,
   CommandName,
+  CommandOutput,
   CommandResult,
   MutationPreview,
-  RepresentationStyle,
-  ResidueRef,
 } from "../types/domain";
 
 function makeId() {
@@ -26,12 +26,12 @@ function makeId() {
     : `activity-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function fail(
+function fail<T = unknown>(
   activityId: string,
   code: CommandErrorCode,
   message: string,
   retryable = false,
-): CommandResult {
+): CommandResult<T> {
   return {
     ok: false,
     error: { code, message, retryable },
@@ -40,65 +40,65 @@ function fail(
   };
 }
 
-function requireRecord(input: unknown): Record<string, unknown> {
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
-    throw new StructureGatewayError("INVALID_INPUT", "Tool input must be an object.", false);
+function assertNotAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw new DOMException("Cancelled", "AbortError");
   }
-  return input as Record<string, unknown>;
-}
-
-function parseResidue(input: unknown): ResidueRef {
-  const record = requireRecord(input);
-  const chain = typeof record.chain === "string" ? record.chain.trim() : "";
-  const residueNumber = Number(record.residueNumber);
-  const insertionCode =
-    typeof record.insertionCode === "string" && record.insertionCode.trim()
-      ? record.insertionCode.trim()
-      : undefined;
-  if (!chain || !Number.isInteger(residueNumber)) {
-    throw new StructureGatewayError(
-      "INVALID_INPUT",
-      "A residue needs a chain and integer residueNumber.",
-      false,
-    );
-  }
-  return { chain, residueNumber, insertionCode };
-}
-
-function parseAtom(input: unknown): AtomRef {
-  const residue = parseResidue(input);
-  const record = input as Record<string, unknown>;
-  const atomName = typeof record.atomName === "string" ? record.atomName.trim().toUpperCase() : "";
-  if (!atomName || atomName.length > 4) {
-    throw new StructureGatewayError(
-      "INVALID_INPUT",
-      "An atom selector needs a valid atomName such as CA or NZ.",
-      false,
-    );
-  }
-  return { ...residue, atomName };
 }
 
 class CommandBus {
   private activeLoad?: AbortController;
+  private activeSurface?: AbortController;
 
-  async execute(
-    command: CommandName,
-    input: unknown = {},
+  constructor() {
+    workspaceSession.subscribe((next, previous) => {
+      if (!next.active || next.identity !== previous.identity) this.cancelPending();
+      if (next.identity !== previous.identity) useAppStore.getState().clearSession();
+    });
+  }
+
+  cancelPending() {
+    this.activeLoad?.abort("workspace-inactive");
+    this.activeSurface?.abort("workspace-inactive");
+    this.activeLoad = undefined;
+    this.activeSurface = undefined;
+    const state = useAppStore.getState();
+    state.setLoading(false);
+    if (state.surfaceOperation.status === "loading") state.clearSurfaceError();
+  }
+
+  async execute<K extends CommandName>(
+    command: K,
+    input: CommandInput<K>,
     context: CommandContext = { origin: "human" },
-  ): Promise<CommandResult> {
+  ): Promise<CommandResult<CommandOutput<K>>> {
     const activityId = makeId();
+    const scope = workspaceSession.getSnapshot();
+    // Denied/stale calls do not write into another user's activity stream.
+    if (!scope.userId) return fail(activityId, "AUTH_REQUIRED", "Sign in to use the laboratory.");
+    if (!scope.active || (context.workspaceGeneration !== undefined && context.workspaceGeneration !== scope.generation)) {
+      return fail(activityId, "WORKSPACE_INACTIVE", "Open the laboratory and discover its current tools before using this action.");
+    }
+    const lifetime = combineSignals(scope.signal, context.signal);
     const start = performance.now();
     let result: CommandResult;
 
     try {
+      assertNotAborted(lifetime.signal);
       if (!viewerPort.isReady()) {
         result = fail(activityId, "RENDER_FAILED", "The 3D viewer is still starting. Try again shortly.", true);
       } else {
-        result = await this.dispatch(command, input, activityId, context.signal);
+        result = await this.dispatch(command, input, activityId, lifetime.signal);
       }
     } catch (error) {
-      result = this.normalizeError(activityId, error);
+      result = this.normalizeError(activityId, lifetime.signal.aborted
+        ? new DOMException("Cancelled", "AbortError") : error);
+    } finally {
+      lifetime.dispose();
+    }
+
+    if (workspaceSession.getSnapshot().identity !== scope.identity) {
+      return fail(activityId, "CANCELLED", "The session ended before the operation completed.", true);
     }
 
     const durationMs = Math.round(performance.now() - start);
@@ -112,8 +112,10 @@ class CommandBus {
       durationMs,
     };
     useAppStore.getState().addActivity(entry);
-    useAppStore.getState().setError(result.ok ? undefined : result.error?.message);
-    return result;
+    if (workspaceSession.getSnapshot().generation === scope.generation) useAppStore.getState().setError(
+      result.ok || result.error?.code === "CANCELLED" ? undefined : result.error?.message,
+    );
+    return result as CommandResult<CommandOutput<K>>;
   }
 
   private async dispatch(
@@ -124,38 +126,48 @@ class CommandBus {
   ): Promise<CommandResult> {
     switch (command) {
       case "load_structure":
-        return this.loadStructure(input, activityId, signal);
+        return this.loadStructure(parseCommandInput(command, input), activityId, signal);
       case "get_structure_summary":
+        parseCommandInput(command, input);
         return this.getStructureSummary(activityId);
       case "focus_residues":
-        return this.focusResidues(input, activityId);
+        return this.focusResidues(parseCommandInput(command, input), activityId);
       case "set_representation":
-        return this.setRepresentation(input, activityId);
+        return this.setRepresentation(parseCommandInput(command, input), activityId);
       case "show_surface":
-        return this.showSurface(input, activityId);
+        return this.showSurface(parseCommandInput(command, input), activityId, signal);
       case "measure_distance":
-        return this.measureDistance(input, activityId, signal);
+        return this.measureDistance(parseCommandInput(command, input), activityId, signal);
       case "preview_mutation_context":
-        return this.previewMutation(input, activityId, signal);
+        return this.previewMutation(parseCommandInput(command, input), activityId, signal);
       case "reset_workspace":
-        return this.resetWorkspace(input, activityId);
+        return this.resetWorkspace(parseCommandInput(command, input), activityId);
     }
   }
 
-  private async loadStructure(input: unknown, activityId: string, externalSignal?: AbortSignal) {
-    const record = requireRecord(input);
+  private async loadStructure(
+    input: CommandInput<"load_structure">,
+    activityId: string,
+    externalSignal?: AbortSignal,
+  ): Promise<CommandResult<CommandOutput<"load_structure">>> {
     this.activeLoad?.abort("replaced");
     const controller = new AbortController();
     this.activeLoad = controller;
     const forwardAbort = () => controller.abort(externalSignal?.reason);
     externalSignal?.addEventListener("abort", forwardAbort, { once: true });
+    if (externalSignal?.aborted) forwardAbort();
     useAppStore.getState().setLoading(true);
+    let prepared: PreparedStructure | undefined;
 
     try {
-      const payload = await structureGateway.load(record.pdbId, controller.signal);
-      viewerPort.load(payload.data, payload.format);
-      const atoms = viewerPort.getAtoms();
-      const summary = await geometryClient.summarize(atoms, controller.signal);
+      assertNotAborted(controller.signal);
+      const payload = await structureGateway.load(input.pdbId, controller.signal);
+      assertNotAborted(controller.signal);
+      prepared = viewerPort.prepareStructure(payload.data, payload.format);
+      assertNotAborted(controller.signal);
+      const summary = await geometryClient.summarize(prepared.atoms, controller.signal);
+      assertNotAborted(controller.signal);
+      viewerPort.commitStructure(prepared);
       useAppStore.getState().setStructure(
         {
           id: payload.id,
@@ -173,9 +185,14 @@ class CommandBus {
         activityId,
       } satisfies CommandResult;
     } finally {
+      if (prepared && !prepared.committed && !prepared.discarded) {
+        viewerPort.discardStructure(prepared);
+      }
       externalSignal?.removeEventListener("abort", forwardAbort);
-      if (this.activeLoad === controller) this.activeLoad = undefined;
-      useAppStore.getState().setLoading(false);
+      if (this.activeLoad === controller) {
+        this.activeLoad = undefined;
+        useAppStore.getState().setLoading(false);
+      }
     }
   }
 
@@ -191,18 +208,13 @@ class CommandBus {
     };
   }
 
-  private focusResidues(input: unknown, activityId: string): CommandResult {
+  private focusResidues(
+    input: CommandInput<"focus_residues">,
+    activityId: string,
+  ): CommandResult<CommandOutput<"focus_residues">> {
     const structure = useAppStore.getState().structure;
     if (!structure) return this.noStructure(activityId);
-    const record = requireRecord(input);
-    if (!Array.isArray(record.residues) || record.residues.length < 1 || record.residues.length > 20) {
-      throw new StructureGatewayError(
-        "INVALID_INPUT",
-        "Choose between one and twenty residues.",
-        false,
-      );
-    }
-    const residues = record.residues.map(parseResidue);
+    const residues = input.residues;
     const atoms = viewerPort.getAtoms();
     const missing = residues.find((residue) => findResidueAtoms(atoms, residue).length === 0);
     if (missing) {
@@ -211,7 +223,7 @@ class CommandBus {
         `Residue ${missing.chain}:${missing.residueNumber} was not found.`,
       );
     }
-    const label = record.label !== false;
+    const label = input.label !== false;
     viewerPort.focusResidues(residues, label);
     const state = useAppStore.getState();
     state.setSelection(residues);
@@ -226,22 +238,13 @@ class CommandBus {
     };
   }
 
-  private setRepresentation(input: unknown, activityId: string): CommandResult {
+  private setRepresentation(
+    input: CommandInput<"set_representation">,
+    activityId: string,
+  ): CommandResult<CommandOutput<"set_representation">> {
     const structure = useAppStore.getState().structure;
     if (!structure) return this.noStructure(activityId);
-    const record = requireRecord(input);
-    const styles: RepresentationStyle[] = ["cartoon", "stick", "sphere", "line"];
-    const colors: ColorScheme[] = ["chain", "spectrum", "element"];
-    if (!styles.includes(record.style as RepresentationStyle) ||
-        !colors.includes(record.colorScheme as ColorScheme)) {
-      throw new StructureGatewayError(
-        "INVALID_INPUT",
-        "Use a supported style and colorScheme.",
-        false,
-      );
-    }
-    const style = record.style as RepresentationStyle;
-    const colorScheme = record.colorScheme as ColorScheme;
+    const { style, colorScheme } = input;
     viewerPort.setRepresentation(style, colorScheme);
     useAppStore.getState().setRepresentation(style, colorScheme);
     return {
@@ -253,35 +256,88 @@ class CommandBus {
     };
   }
 
-  private async showSurface(input: unknown, activityId: string): Promise<CommandResult> {
+  private async showSurface(
+    input: CommandInput<"show_surface">,
+    activityId: string,
+    signal?: AbortSignal,
+  ): Promise<CommandResult<CommandOutput<"show_surface">>> {
     const structure = useAppStore.getState().structure;
     if (!structure) return this.noStructure(activityId);
-    const record = requireRecord(input);
-    if (typeof record.visible !== "boolean") {
-      throw new StructureGatewayError("INVALID_INPUT", "visible must be true or false.", false);
+    const opacity = input.opacity ?? 0.72;
+    const request = { visible: input.visible, opacity };
+
+    this.activeSurface?.abort("replaced");
+    const controller = new AbortController();
+    this.activeSurface = controller;
+    const forwardAbort = () => controller.abort(signal?.reason);
+    signal?.addEventListener("abort", forwardAbort, { once: true });
+    if (signal?.aborted) forwardAbort();
+    useAppStore.getState().beginSurfaceUpdate(request);
+
+    try {
+      assertNotAborted(controller.signal);
+      await new Promise<void>((resolve, reject) => {
+        let frame: number | undefined;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const cancelled = () => {
+          if (frame !== undefined) cancelAnimationFrame(frame);
+          if (timer !== undefined) clearTimeout(timer);
+          controller.signal.removeEventListener("abort", cancelled);
+          reject(new DOMException("Cancelled", "AbortError"));
+        };
+        const complete = () => {
+          controller.signal.removeEventListener("abort", cancelled);
+          resolve();
+        };
+        controller.signal.addEventListener("abort", cancelled, { once: true });
+        if (typeof requestAnimationFrame === "function") {
+          frame = requestAnimationFrame(complete);
+        } else {
+          timer = setTimeout(complete, 0);
+        }
+      });
+      assertNotAborted(controller.signal);
+      await viewerPort.showSurface(input.visible, opacity, controller.signal);
+      assertNotAborted(controller.signal);
+      if (this.activeSurface === controller) {
+        useAppStore.getState().completeSurfaceUpdate(request);
+      }
+      return {
+        ok: true,
+        data: { visible: input.visible, opacity, changedView: true },
+        evidence: "calculated",
+        provenance: { source: "local-calculation", structureId: structure.id },
+        activityId,
+      };
+    } catch (error) {
+      if (this.activeSurface === controller) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          useAppStore.getState().clearSurfaceError();
+        } else {
+          const normalized = this.normalizeError(activityId, error);
+          useAppStore.getState().failSurfaceUpdate(
+            request,
+            normalized.error?.message ?? "The molecular surface could not be rendered.",
+          );
+        }
+      }
+      throw error;
+    } finally {
+      signal?.removeEventListener("abort", forwardAbort);
+      if (this.activeSurface === controller) this.activeSurface = undefined;
     }
-    const opacity = record.opacity === undefined ? 0.72 : Number(record.opacity);
-    if (!Number.isFinite(opacity) || opacity < 0.1 || opacity > 1) {
-      throw new StructureGatewayError("INVALID_INPUT", "opacity must be between 0.1 and 1.", false);
-    }
-    await viewerPort.showSurface(record.visible, opacity);
-    useAppStore.getState().setSurface(record.visible, opacity);
-    return {
-      ok: true,
-      data: { visible: record.visible, opacity, changedView: true },
-      evidence: "calculated",
-      provenance: { source: "local-calculation", structureId: structure.id },
-      activityId,
-    };
   }
 
-  private async measureDistance(input: unknown, activityId: string, signal?: AbortSignal): Promise<CommandResult> {
+  private async measureDistance(
+    input: CommandInput<"measure_distance">,
+    activityId: string,
+    signal?: AbortSignal,
+  ): Promise<CommandResult<CommandOutput<"measure_distance">>> {
     const structure = useAppStore.getState().structure;
     if (!structure) return this.noStructure(activityId);
-    const record = requireRecord(input);
-    const from = parseAtom(record.from);
-    const to = parseAtom(record.to);
+    const { from, to } = input;
     const measured = await geometryClient.distance(viewerPort.getAtoms(), from, to, signal);
+    assertNotAborted(signal);
     viewerPort.showDistance(measured.fromAtom, measured.toAtom, measured.angstroms);
     const measurement = { from, to, angstroms: measured.angstroms };
     const state = useAppStore.getState();
@@ -296,20 +352,14 @@ class CommandBus {
     };
   }
 
-  private async previewMutation(input: unknown, activityId: string, signal?: AbortSignal): Promise<CommandResult> {
+  private async previewMutation(
+    input: CommandInput<"preview_mutation_context">,
+    activityId: string,
+    signal?: AbortSignal,
+  ): Promise<CommandResult<CommandOutput<"preview_mutation_context">>> {
     const structure = useAppStore.getState().structure;
     if (!structure) return this.noStructure(activityId);
-    const record = requireRecord(input);
-    const residue = parseResidue(record.residue);
-    const toAminoAcid =
-      typeof record.toAminoAcid === "string" ? record.toAminoAcid.trim().toUpperCase() : "";
-    if (!AMINO_ACID_CODES.includes(toAminoAcid)) {
-      throw new StructureGatewayError(
-        "INVALID_INPUT",
-        "toAminoAcid must be a standard one-letter amino-acid code.",
-        false,
-      );
-    }
+    const { residue, toAminoAcid } = input;
     const atoms = viewerPort.getAtoms();
     const targetAtoms = findResidueAtoms(atoms, residue);
     if (targetAtoms.length === 0) {
@@ -327,6 +377,7 @@ class CommandBus {
       );
     }
     const neighbors = await geometryClient.neighbors(atoms, residue, 5, signal);
+    assertNotAborted(signal);
     const heuristics = compareAminoAcids(originalAminoAcid, toAminoAcid);
     const preview: MutationPreview = {
       residue,
@@ -351,33 +402,29 @@ class CommandBus {
     };
   }
 
-  private resetWorkspace(input: unknown, activityId: string): CommandResult {
-    const record = requireRecord(input);
-    if (record.scope !== "view" && record.scope !== "all") {
-      throw new StructureGatewayError(
-        "INVALID_INPUT",
-        "scope must be either view or all.",
-        false,
-      );
-    }
-    if (record.scope === "view") {
+  private resetWorkspace(
+    input: CommandInput<"reset_workspace">,
+    activityId: string,
+  ): CommandResult<CommandOutput<"reset_workspace">> {
+    if (input.scope === "view") {
       if (!useAppStore.getState().structure) return this.noStructure(activityId);
       viewerPort.resetView();
       useAppStore.getState().resetViewState();
     } else {
       this.activeLoad?.abort("workspace-reset");
+      this.activeSurface?.abort("workspace-reset");
       viewerPort.clear();
       useAppStore.getState().clearWorkspace();
     }
     return {
       ok: true,
-      data: { scope: record.scope, changedView: true },
+      data: { scope: input.scope, changedView: true },
       evidence: "observed",
       activityId,
     };
   }
 
-  private noStructure(activityId: string): CommandResult {
+  private noStructure<T = unknown>(activityId: string): CommandResult<T> {
     return fail(
       activityId,
       "STRUCTURE_NOT_LOADED",
@@ -387,8 +434,14 @@ class CommandBus {
   }
 
   private normalizeError(activityId: string, error: unknown): CommandResult {
+    if (error instanceof CommandValidationError) {
+      return fail(activityId, error.code, error.message, error.retryable);
+    }
     if (error instanceof StructureGatewayError) {
       return fail(activityId, error.code, error.message, error.retryable);
+    }
+    if (error instanceof ViewerPortError) {
+      return fail(activityId, error.code, error.message, error.code === "RENDER_FAILED");
     }
     if (error instanceof GeometryError) {
       return fail(activityId, error.code, error.message, false);
@@ -405,11 +458,11 @@ class CommandBus {
   }
 
   private successMessage(command: CommandName, data: unknown): string {
-    const payload = data as Record<string, any> | undefined;
+    const payload = data && typeof data === "object" ? data as Record<string, unknown> : undefined;
     switch (command) {
       case "load_structure": return `${payload?.structureId ?? "Structure"} loaded and rendered.`;
       case "get_structure_summary": return "Structure summary inspected.";
-      case "focus_residues": return `${payload?.residues?.length ?? 0} residue selection focused.`;
+      case "focus_residues": return `${Array.isArray(payload?.residues) ? payload.residues.length : 0} residue selection focused.`;
       case "set_representation": return `Representation set to ${payload?.style}.`;
       case "show_surface": return payload?.visible ? "Molecular surface shown." : "Molecular surface hidden.";
       case "measure_distance": return `Distance measured: ${Number(payload?.angstroms).toFixed(2)} Å.`;

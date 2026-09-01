@@ -14,6 +14,8 @@ export type CommandErrorCode =
   | "SELECTION_NOT_FOUND"
   | "AMBIGUOUS_ATOM"
   | "RENDER_FAILED"
+  | "AUTH_REQUIRED"
+  | "WORKSPACE_INACTIVE"
   | "CANCELLED";
 
 export interface CommandResult<T = unknown> {
@@ -42,10 +44,28 @@ export type CommandName =
   | "preview_mutation_context"
   | "reset_workspace";
 
+export type WebMcpStatus =
+  | "inactive"
+  | "unavailable"
+  | "registering"
+  | "ready"
+  | "partial"
+  | "error";
+
 export type CommandOrigin = "human" | "agent";
 
 export type RepresentationStyle = "cartoon" | "stick" | "sphere" | "line";
 export type ColorScheme = "chain" | "spectrum" | "element";
+
+export type SurfaceRequest = {
+  visible: boolean;
+  opacity: number;
+};
+
+export type SurfaceOperation =
+  | { status: "idle" }
+  | { status: "loading"; request: SurfaceRequest }
+  | { status: "error"; request: SurfaceRequest; message: string };
 
 export interface AtomRecord {
   serial: number;
@@ -115,6 +135,39 @@ export interface MutationPreview {
   disclaimer: string;
 }
 
+export interface CommandInputMap {
+  load_structure: { pdbId: string };
+  get_structure_summary: Record<string, never>;
+  focus_residues: { residues: ResidueRef[]; label?: boolean };
+  set_representation: { style: RepresentationStyle; colorScheme: ColorScheme };
+  show_surface: { visible: boolean; opacity?: number };
+  measure_distance: { from: AtomRef; to: AtomRef };
+  preview_mutation_context: { residue: ResidueRef; toAminoAcid: string };
+  reset_workspace: { scope: "view" | "all" };
+}
+
+export interface CommandOutputMap {
+  load_structure: {
+    structureId: string;
+    source: "fixture" | "rcsb";
+    summary: StructureSummary;
+  };
+  get_structure_summary: StructureSummary;
+  focus_residues: { residues: ResidueRef[]; label: boolean; changedView: true };
+  set_representation: {
+    style: RepresentationStyle;
+    colorScheme: ColorScheme;
+    changedView: true;
+  };
+  show_surface: { visible: boolean; opacity: number; changedView: true };
+  measure_distance: DistanceMeasurement & { units: "angstrom"; changedView: true };
+  preview_mutation_context: MutationPreview & { neighborCount: number; changedView: true };
+  reset_workspace: { scope: "view" | "all"; changedView: true };
+}
+
+export type CommandInput<K extends CommandName> = CommandInputMap[K];
+export type CommandOutput<K extends CommandName> = CommandOutputMap[K];
+
 export interface ActivityEntry {
   id: string;
   command: CommandName;
@@ -128,4 +181,6 @@ export interface ActivityEntry {
 export interface CommandContext {
   origin: CommandOrigin;
   signal?: AbortSignal;
+  /** Bound by registered tools, never accepted from tool input. */
+  workspaceGeneration?: number;
 }

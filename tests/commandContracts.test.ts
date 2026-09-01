@@ -1,0 +1,91 @@
+import { describe, expect, it } from "vitest";
+import {
+  COMMAND_CONTRACTS,
+  COMMAND_NAMES,
+  CommandValidationError,
+  parseCommandInput,
+} from "../src/core/commandContracts";
+
+const validInputs = {
+  load_structure: { pdbId: " 4hhb " },
+  get_structure_summary: {},
+  focus_residues: { residues: [{ chain: " a ", residueNumber: 10 }], label: true },
+  set_representation: { style: "cartoon", colorScheme: "chain" },
+  show_surface: { visible: true, opacity: 0.72 },
+  measure_distance: {
+    from: { chain: "a", residueNumber: 1, atomName: "ca" },
+    to: { chain: "a", residueNumber: 10, atomName: "nz" },
+  },
+  preview_mutation_context: {
+    residue: { chain: "a", residueNumber: 10 },
+    toAminoAcid: "w",
+  },
+  reset_workspace: { scope: "view" },
+} as const;
+
+describe("command contracts", () => {
+  it("defines exactly eight strict JSON schemas with behavioral annotations", () => {
+    expect(Object.keys(COMMAND_CONTRACTS)).toEqual(COMMAND_NAMES);
+    for (const name of COMMAND_NAMES) {
+      const contract = COMMAND_CONTRACTS[name];
+      expect(contract.name).toBe(name);
+      expect(contract.title.length).toBeGreaterThan(0);
+      expect(contract.description.length).toBeGreaterThan(20);
+      expect(contract.inputSchema).toMatchObject({
+        type: "object",
+        additionalProperties: false,
+      });
+      expect(contract.annotations).toBeTypeOf("object");
+    }
+    expect(COMMAND_CONTRACTS.get_structure_summary.annotations.readOnlyHint).toBe(true);
+    expect(COMMAND_CONTRACTS.load_structure.annotations.openWorldHint).toBe(true);
+    expect(COMMAND_CONTRACTS.reset_workspace.annotations.destructiveHint).toBe(true);
+  });
+
+  it("parses every valid command and rejects unsupported top-level properties", () => {
+    for (const name of COMMAND_NAMES) {
+      expect(() => parseCommandInput(name, validInputs[name])).not.toThrow();
+      expect(() =>
+        parseCommandInput(name, { ...validInputs[name], unsupported: true }),
+      ).toThrow(CommandValidationError);
+    }
+  });
+
+  it("normalizes molecular identifiers at the command boundary", () => {
+    expect(parseCommandInput("load_structure", validInputs.load_structure)).toEqual({
+      pdbId: "4HHB",
+    });
+    expect(parseCommandInput("measure_distance", validInputs.measure_distance)).toEqual({
+      from: { chain: "A", residueNumber: 1, atomName: "CA", insertionCode: undefined },
+      to: { chain: "A", residueNumber: 10, atomName: "NZ", insertionCode: undefined },
+    });
+    expect(
+      parseCommandInput(
+        "preview_mutation_context",
+        validInputs.preview_mutation_context,
+      ),
+    ).toMatchObject({
+      residue: { chain: "A", residueNumber: 10 },
+      toAminoAcid: "W",
+    });
+  });
+
+  it("enforces nested strictness, residue limits, and surface bounds", () => {
+    expect(() =>
+      parseCommandInput("focus_residues", {
+        residues: [{ chain: "A", residueNumber: 10, unsupported: true }],
+      }),
+    ).toThrow(/unsupported property/);
+    expect(() =>
+      parseCommandInput("focus_residues", {
+        residues: Array.from({ length: 21 }, (_, index) => ({
+          chain: "A",
+          residueNumber: index + 1,
+        })),
+      }),
+    ).toThrow(/one and twenty/);
+    expect(() =>
+      parseCommandInput("show_surface", { visible: true, opacity: 0.05 }),
+    ).toThrow(/between 0.1 and 1/);
+  });
+});

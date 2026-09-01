@@ -13,14 +13,21 @@ describe("structure gateway", () => {
     expect(() => normalizePdbId("ABC")).toThrow(StructureGatewayError);
   });
 
-  it("uses the local deterministic fixture for 1CRN", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("data_fixture", { status: 200 }),
-    );
-    const result = await structureGateway.load("1crn");
-    expect(result.source).toBe("fixture");
-    expect(fetchMock.mock.calls[0][0]).toContain("structures/1CRN.cif");
-  });
+  it.each(["1CRN", "4HHB"])(
+    "uses the local deterministic fixture for %s",
+    async (pdbId) => {
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("data_fixture", { status: 200 }),
+      );
+
+      const result = await structureGateway.load(pdbId.toLowerCase());
+
+      expect(result).toMatchObject({ id: pdbId, source: "fixture", format: "cif" });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(fetchMock.mock.calls[0][0]).toContain(`structures/${pdbId}.cif`);
+      expect(String(fetchMock.mock.calls[0][0])).not.toContain("files.rcsb.org");
+    },
+  );
 
   it("uses RCSB for other identifiers", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
