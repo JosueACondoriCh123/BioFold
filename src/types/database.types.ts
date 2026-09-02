@@ -167,6 +167,7 @@ export interface Database {
         Row: {
           id: string;
           conversation_id: string;
+          request_id: string | null;
           sender: string;
           content: string;
           citations: Json | null;
@@ -176,6 +177,7 @@ export interface Database {
         Insert: {
           id?: string;
           conversation_id: string;
+          request_id?: string | null;
           sender: string;
           content: string;
           citations?: Json | null;
@@ -185,6 +187,7 @@ export interface Database {
         Update: {
           id?: string;
           conversation_id?: string;
+          request_id?: string | null;
           sender?: string;
           content?: string;
           citations?: Json | null;
@@ -349,6 +352,7 @@ export interface Database {
           locator: string | null;
           token_count: number | null;
           embedding: string | null;
+          fts: unknown;
           created_at: string;
         };
         Insert: {
@@ -388,7 +392,27 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      hybrid_search_knowledge: {
+        Args: {
+          query_text: string;
+          query_embedding?: string | null;
+          match_count?: number;
+          full_text_weight?: number;
+          semantic_weight?: number;
+          rrf_k?: number;
+        };
+        Returns: Array<{
+          chunk_id: string;
+          source_id: string;
+          title: string;
+          content: string;
+          locator: string | null;
+          publisher: string;
+          url: string;
+          retrieved_at: string;
+          score: number;
+        }>;
+      };
     };
     Enums: {
       [_ in never]: never;

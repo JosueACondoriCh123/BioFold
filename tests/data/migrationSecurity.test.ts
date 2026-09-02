@@ -10,6 +10,7 @@ const migrations = readdirSync(migrationsDir)
 
 const fullSchema = migrations.map(({ sql }) => sql).join("\n");
 const hardening = migrations.find(({ name }) => name.endsWith("_harden_phase2_data_access.sql"))?.sql ?? "";
+const assistantRag = migrations.find(({ name }) => name.endsWith("_phase2_assistant_rag.sql"))?.sql ?? "";
 
 describe("Phase 2 migration security", () => {
   it.each([
@@ -57,5 +58,16 @@ describe("Phase 2 migration security", () => {
     expect(hardening).toContain("idx_ai_requests_conversation_id");
     expect(hardening).toContain('"schemaVersion": 1');
     expect(hardening).toContain('"selectedResidues": []');
+  });
+
+  it("keeps hybrid retrieval server-only and makes request replay idempotent", () => {
+    expect(assistantRag).toContain("uq_messages_conversation_request_sender");
+    expect(assistantRag).toContain("uq_ai_requests_user_request");
+    expect(assistantRag).toContain("DROP CONSTRAINT IF EXISTS ai_requests_request_id_key");
+    expect(assistantRag).toContain("idx_knowledge_chunks_fts");
+    expect(assistantRag).toContain("hybrid_search_knowledge");
+    expect(assistantRag).toMatch(/REVOKE ALL ON FUNCTION[\s\S]+FROM PUBLIC, anon, authenticated/i);
+    expect(assistantRag).toMatch(/GRANT EXECUTE ON FUNCTION[\s\S]+TO service_role/i);
+    expect(assistantRag).toContain("SECURITY INVOKER");
   });
 });

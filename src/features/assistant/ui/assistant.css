@@ -114,6 +114,12 @@
   overflow-y: auto;
 }
 
+/* Keep both panels mounted so the Assistant stream/history survives a tab
+   switch, while preserving native hidden semantics for users and tests. */
+.bf-tab-content[hidden] {
+  display: none;
+}
+
 .bf-tab-content.is-chat-tab {
   overflow: hidden;
 }

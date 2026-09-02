@@ -20,6 +20,7 @@
     "supabase:reset": "supabase db reset",
     "supabase:status": "supabase status",
     "supabase:test": "supabase test db",
+    "supabase:functions": "supabase functions serve biofold-chat --env-file supabase/functions/.env.local",
     "test:platform:serve": "vite build --config vite.platform-e2e.config.ts && vite preview --config vite.platform-e2e.config.ts",
     "test:unconfigured:serve": "vite build --config vite.platform-e2e.config.ts --mode unconfigured && vite preview --config vite.platform-e2e.config.ts --mode unconfigured",
     "test:lab:serve": "vite build --config vite.e2e.config.ts && vite preview --config vite.e2e.config.ts"

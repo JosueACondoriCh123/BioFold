@@ -1,6 +1,6 @@
 import { useState, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { Layers3, Bot, ChevronRight, ChevronLeft } from "lucide-react";
-import type { AssistantClient } from "../../../types/assistant";
+import type { AssistantClient, AssistantHistoryPort } from "../../../types/assistant";
 import type {
   ActivityEntry,
   DistanceMeasurement,
@@ -14,6 +14,8 @@ import "./assistant.css";
 
 export interface InspectorPanelProps {
   assistantClient: AssistantClient;
+  assistantHistory?: AssistantHistoryPort;
+  assistantEnabled?: boolean;
   projectId?: string;
   defaultTab?: InspectorTabId;
   summary?: StructureSummary | null;
@@ -27,6 +29,8 @@ export interface InspectorPanelProps {
 
 export function InspectorPanel({
   assistantClient,
+  assistantHistory,
+  assistantEnabled = true,
   projectId = "default-project",
   defaultTab = "results",
   summary,
@@ -128,14 +132,14 @@ export function InspectorPanel({
             hidden={activeTab !== "results"}
             className="bf-tab-content"
           >
-            {activeTab === "results" && (resultsContent ?? (
+            {resultsContent ?? (
               <ResultsTab
                 summary={summary}
                 measurement={measurement}
                 mutation={mutation}
                 activityEntries={activityEntries}
               />
-            ))}
+            )}
           </div>
 
           <div
@@ -145,13 +149,14 @@ export function InspectorPanel({
             hidden={activeTab !== "assistant"}
             className="bf-tab-content is-chat-tab"
           >
-            {activeTab === "assistant" && (
-              <AssistantChat
-                assistantClient={assistantClient}
-                projectId={projectId}
-                onApplyProposal={onApplyProposal}
-              />
-            )}
+            <AssistantChat
+              assistantClient={assistantClient}
+              assistantHistory={assistantHistory}
+              enabled={assistantEnabled}
+              confirmedActivities={activityEntries}
+              projectId={projectId}
+              onApplyProposal={onApplyProposal}
+            />
           </div>
         </div>
       )}

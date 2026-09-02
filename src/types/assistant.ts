@@ -64,6 +64,25 @@ export interface AssistantClient {
   stream(request: AssistantRequest, options?: AssistantStreamOptions): AsyncIterable<AssistantStreamEvent>;
 }
 
+export interface PersistedAssistantMessage {
+  id: string;
+  sender: "user" | "assistant" | "system";
+  content: string;
+  citations: Citation[];
+  proposals: CommandProposal[];
+  createdAt: string;
+}
+
+export interface AssistantConversationHistory {
+  conversationId: string;
+  messages: PersistedAssistantMessage[];
+}
+
+/** Read-only browser boundary. The Edge Function owns all message writes. */
+export interface AssistantHistoryPort {
+  loadLatest(projectId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationHistory | null>;
+}
+
 function requiredString(value: unknown, label: string, maxLength: number) {
   if (typeof value !== "string" || !value.trim() || value.length > maxLength) {
     throw new Error(`${label} must be a non-empty string of at most ${maxLength} characters.`);

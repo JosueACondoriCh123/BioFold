@@ -2,32 +2,46 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Bot, Sparkles } from "lucide-react";
 import type {
   AssistantClient,
+  AssistantHistoryPort,
   AssistantRequest,
   CommandProposal,
 } from "../../../types/assistant";
 import type { ApplyProposalHandler, UiChatMessage } from "./types";
+import type { ActivityEntry } from "../../../types/domain";
 import { ChatMessageItem } from "./ChatMessageItem";
 import { ChatInputArea } from "./ChatInputArea";
 
 export interface AssistantChatProps {
   assistantClient: AssistantClient;
+  assistantHistory?: AssistantHistoryPort;
+  enabled?: boolean;
   projectId: string;
   conversationId?: string;
   initialMessages?: UiChatMessage[];
   onApplyProposal?: ApplyProposalHandler;
+  confirmedActivities?: ActivityEntry[];
 }
+
+const EMPTY_ACTIVITY: ActivityEntry[] = [];
 
 export function AssistantChat({
   assistantClient,
+  assistantHistory,
+  enabled = true,
   projectId,
-  conversationId = "default-conv",
+  conversationId,
   initialMessages = [],
   onApplyProposal,
+  confirmedActivities = EMPTY_ACTIVITY,
 }: AssistantChatProps) {
   const [messages, setMessages] = useState<UiChatMessage[]>(initialMessages);
+  const [activeConversationId, setActiveConversationId] = useState(conversationId);
+  const [historyStatus, setHistoryStatus] = useState<"idle" | "loading" | "error">("idle");
   const [isStreaming, setIsStreaming] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const confirmedActivitiesRef = useRef(confirmedActivities);
+  confirmedActivitiesRef.current = confirmedActivities;
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const messageCounterRef = useRef(1);
 
@@ -48,6 +62,68 @@ export function AssistantChat({
       abortControllerRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (!assistantHistory || !enabled) return;
+    const controller = new AbortController();
+    setHistoryStatus("loading");
+    void assistantHistory.loadLatest(projectId, { signal: controller.signal }).then((history) => {
+      if (!history) {
+        setActiveConversationId(undefined);
+        if (initialMessages.length === 0) setMessages([]);
+      } else {
+        setActiveConversationId(history.conversationId);
+        setMessages(history.messages.map((message) => {
+          const applied = new Set(message.proposals.filter((proposal) => confirmedActivitiesRef.current.some((entry) =>
+            entry.agentKind === "assistant" && entry.approvedByUser && entry.sourceMessageId === message.id
+            && entry.command === proposal.command && entry.status === "success",
+          )).map((proposal) => proposal.id));
+          return {
+            id: message.id,
+            sender: message.sender,
+            content: message.content,
+            citations: message.citations,
+            proposals: message.proposals,
+            ...(applied.size ? { appliedProposals: applied } : {}),
+            sourceMessageId: message.sender === "assistant" ? message.id : undefined,
+            createdAt: message.createdAt,
+          };
+        }));
+      }
+      setHistoryStatus("idle");
+    }).catch((error) => {
+      if (controller.signal.aborted) return;
+      setHistoryStatus("error");
+      setMessages((previous) => [...previous, {
+        id: `history-error-${Date.now()}`,
+        sender: "system",
+        content: error instanceof Error ? error.message : "Conversation history could not be loaded.",
+        createdAt: new Date().toISOString(),
+        error: { code: "STREAM_FAILED", message: "Conversation history could not be loaded.", retryable: true },
+      }]);
+    });
+    return () => controller.abort();
+  }, [assistantHistory, enabled, initialMessages.length, projectId]);
+
+  useEffect(() => {
+    setMessages((previous) => {
+      let changed = false;
+      const next = previous.map((message) => {
+      if (message.sender !== "assistant" || !message.proposals?.length) return message;
+      const applied = new Set(message.appliedProposals ?? []);
+      for (const proposal of message.proposals) {
+        if (confirmedActivities.some((entry) => entry.agentKind === "assistant" && entry.approvedByUser
+          && entry.sourceMessageId === message.id && entry.command === proposal.command && entry.status === "success")) {
+          applied.add(proposal.id);
+        }
+      }
+      if (applied.size === (message.appliedProposals?.size ?? 0)) return message;
+      changed = true;
+      return { ...message, appliedProposals: applied };
+      });
+      return changed ? next : previous;
+    });
+  }, [confirmedActivities]);
 
   const handleSendMessage = async (userText: string) => {
     const userMessageId = `user-msg-${Date.now()}-${messageCounterRef.current++}`;
@@ -78,7 +154,7 @@ export function AssistantChat({
     const request: AssistantRequest = {
       requestId: `req-${Date.now()}`,
       projectId,
-      conversationId,
+      ...(activeConversationId ? { conversationId: activeConversationId } : {}),
       message: userText,
     };
 
@@ -89,6 +165,7 @@ export function AssistantChat({
       for await (const event of stream) {
         if (controller.signal.aborted) break;
         if (event.type === "done" || event.type === "error") terminalEventReceived = true;
+        if (event.type === "meta") setActiveConversationId(event.conversationId);
 
         setMessages((prev) => {
           return prev.map((msg) => {
@@ -234,6 +311,8 @@ export function AssistantChat({
       </header>
 
       <div className="bf-chat-messages-container" role="log" aria-live="polite">
+        {historyStatus === "loading" && <div className="bf-assistant-history-status" role="status">Loading saved conversation…</div>}
+        {!enabled && <div className="bf-assistant-history-status" role="status">Save or open a project to use the persistent Assistant.</div>}
         {messages.length === 0 ? (
           <div className="bf-chat-empty-state">
             <div className="bf-empty-bot-icon" aria-hidden="true">
@@ -284,6 +363,7 @@ export function AssistantChat({
       <footer className="bf-chat-footer">
         <ChatInputArea
           isStreaming={isStreaming}
+          disabled={!enabled || historyStatus === "loading"}
           onSend={handleSendMessage}
           onCancel={handleCancel}
         />

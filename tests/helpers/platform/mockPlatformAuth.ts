@@ -40,8 +40,12 @@ export async function setupMockSupabaseNetwork(page: Page) {
   const unexpected: string[] = [];
   const projects: Array<Record<string, unknown>> = [];
   const projectEvents: Array<Record<string, unknown>> = [];
+  const conversations: Array<Record<string, unknown>> = [];
+  const messages: Array<Record<string, unknown>> = [];
   let projectSequence = 0;
   let eventSequence = 0;
+  let conversationSequence = 0;
+  let messageSequence = 0;
 
   function issueSession() {
     const exp = Math.floor(Date.now() / 1000) + 3600;
@@ -254,12 +258,99 @@ export async function setupMockSupabaseNetwork(page: Page) {
       }
     }
 
+    if (table === "conversations" && method === "GET") {
+      const projectId = eq("project_id");
+      return fulfillRows(conversations
+        .filter(conversation => !projectId || conversation.project_id === projectId)
+        .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))));
+    }
+
+    if (table === "messages" && method === "GET") {
+      const conversationId = eq("conversation_id");
+      return fulfillRows(messages
+        .filter(message => !conversationId || message.conversation_id === conversationId)
+        .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))));
+    }
+
     unexpected.push(`${method} /rest/v1/${table}`);
     return reject(route, "PGRST000", "Unhandled test data request", 501);
   });
 
+  // Deterministic Edge boundary for the browser vertical slice. It simulates
+  // persistence and typed SSE, never a provider or a production secret.
+  await page.route("**/functions/v1/biofold-chat", async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const token = request.headers().authorization?.replace(/^Bearer /, "");
+    if (url.origin !== SUPABASE_TEST_ORIGIN || !token || !activeTokens.has(token)) {
+      unexpected.push(`${request.method()} unexpected assistant request`);
+      return route.abort("blockedbyclient");
+    }
+    const body = (request.postDataJSON() ?? {}) as Record<string, unknown>;
+    const project = projects.find(candidate => candidate.id === body.projectId);
+    if (!project) return json(route, { error: { code: "PROJECT_NOT_FOUND", message: "Project not found.", retryable: false } }, 404);
+    let conversation = conversations.find(candidate => candidate.id === body.conversationId);
+    if (!conversation) {
+      const now = new Date().toISOString();
+      conversation = {
+        id: `30000000-0000-4000-8000-${String(++conversationSequence).padStart(12, "0")}`,
+        project_id: project.id,
+        title: String(body.message).slice(0, 80),
+        created_at: now,
+        updated_at: now,
+      };
+      conversations.push(conversation);
+    }
+    const now = new Date().toISOString();
+    const requestId = String(body.requestId);
+    const userMessage = {
+      id: `40000000-0000-4000-8000-${String(++messageSequence).padStart(12, "0")}`,
+      conversation_id: conversation.id,
+      request_id: requestId,
+      sender: "user",
+      content: String(body.message),
+      citations: null,
+      proposals: null,
+      created_at: now,
+    };
+    const assistantMessage = {
+      id: `40000000-0000-4000-8000-${String(++messageSequence).padStart(12, "0")}`,
+      conversation_id: conversation.id,
+      request_id: requestId,
+      sender: "assistant",
+      content: "This grounded answer describes the confirmed structure without changing its coordinates.",
+      citations: [{
+        id: "biofold-evidence-e2e",
+        title: "Scientific evidence levels in BioFold",
+        publisher: "BioFold",
+        url: "https://github.com/JosueACondoriCh123/BioFold/blob/main/knowledge/evidence-levels.md",
+        locator: "Observed; Calculated",
+        retrievedAt: now,
+      }],
+      proposals: [{
+        id: "summary-e2e",
+        command: "get_structure_summary",
+        input: {},
+        rationale: "Read the calculated summary from the confirmed scene.",
+      }],
+      created_at: new Date(Date.now() + 1).toISOString(),
+    };
+    messages.push(userMessage, assistantMessage);
+    conversation.updated_at = assistantMessage.created_at;
+    const emit = (type: string, payload: object) => `event: ${type}\ndata: ${JSON.stringify({ type, ...payload })}\n\n`;
+    const stream = [
+      emit("meta", { requestId, conversationId: conversation.id, assistantMessageId: assistantMessage.id }),
+      emit("delta", { text: assistantMessage.content }),
+      emit("citations", { citations: assistantMessage.citations }),
+      emit("proposals", { proposals: assistantMessage.proposals }),
+      emit("usage", { usage: { model: "e2e/model", promptTokens: 10, completionTokens: 12, totalTokens: 22 } }),
+      emit("done", { interrupted: false }),
+    ].join("");
+    return route.fulfill({ status: 200, contentType: "text/event-stream; charset=utf-8", body: stream });
+  });
+
   return {
-    requests, links, unexpected, failures, projects, projectEvents,
+    requests, links, unexpected, failures, projects, projectEvents, conversations, messages,
     count: (path: string, method = "POST") => requests.filter(request => request.url.pathname === `/auth/v1/${path}` && request.method === method).length,
     lastLink: (kind: LinkKind) => {
       const link = [...links].reverse().find(candidate => candidate.kind === kind);

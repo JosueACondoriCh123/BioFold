@@ -367,6 +367,43 @@ test("a saved project restores its molecular scene and audit trail after reload"
   await expect(page.locator('.activity-item[data-command="measure_distance"]')).toBeVisible();
 });
 
+test("the Assistant persists grounded citations and executes proposals only after Apply", async ({ page, auth }) => {
+  test.setTimeout(90_000);
+  await auth.seedSession();
+  await page.goto("/app");
+  await page.getByRole("button", { name: "Create your first project" }).click();
+  await page.getByLabel("Project title").fill("Assistant workspace");
+  await page.getByLabel("Initial PDB ID").fill("1CRN");
+  await page.getByRole("button", { name: "Create project", exact: true }).click();
+  await page.getByRole("button", { name: "Open project Assistant workspace in laboratory" }).click();
+  await expect(page.locator(".structure-pill strong")).toHaveText("1CRN", { timeout: 25_000 });
+
+  await page.getByRole("tab", { name: /Assistant/ }).click();
+  await expect(page.getByText("Loading saved conversation…")).toHaveCount(0);
+  await page.getByLabel("Assistant prompt message").fill("Explain the evidence in this structure.");
+  await page.getByRole("button", { name: "Send message to assistant" }).click();
+  await expect(page.getByText(/grounded answer describes the confirmed structure/i)).toBeVisible();
+  await page.getByRole("button", { name: /Scientific sources \(1\)/i }).click();
+  await expect(page.getByRole("link", { name: /Scientific evidence levels in BioFold/i })).toHaveAttribute("href", /knowledge\/evidence-levels\.md/);
+  await expect(page.getByText("Get Structure Summary")).toBeVisible();
+  expect(auth.projectEvents.filter(event => event.agent_kind === "assistant")).toHaveLength(0);
+
+  await page.getByRole("button", { name: "Apply proposed command Get Structure Summary" }).click();
+  await expect(page.getByText("Applied to scene")).toBeVisible();
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await expect(page.locator('.activity-item[data-command="get_structure_summary"][data-origin="agent"]')).toBeVisible();
+  await expect.poll(() => auth.projectEvents.filter(event => event.agent_kind === "assistant").length).toBe(1);
+
+  await page.reload();
+  await expect(page.locator(".structure-pill strong")).toHaveText("1CRN", { timeout: 25_000 });
+  await page.getByRole("tab", { name: /Assistant/ }).click();
+  await expect(page.getByText(/grounded answer describes the confirmed structure/i)).toBeVisible();
+  await expect(page.getByText("Applied to scene")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Apply proposed command Get Structure Summary" })).toHaveCount(0);
+  expect(auth.conversations).toHaveLength(1);
+  expect(auth.messages.map(message => message.sender)).toEqual(["user", "assistant"]);
+});
+
 test("laboratory deactivates eight tools outside its route and preserves results on return", async ({ page, auth }) => {
   await auth.seedSession();
   await page.goto("/app/lab");

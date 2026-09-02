@@ -40,10 +40,10 @@ import {
 } from "./core/projectWorkspace";
 import { captureWorkspaceSnapshot } from "./core/workspaceSnapshot";
 import { workspaceSession } from "./core/workspaceSession";
+import { getAssistantServices } from "./assistant/assistantService";
 import { InspectorPanel } from "./features/assistant/ui";
 import { PersistenceIndicator } from "./features/projects/PersistenceIndicator";
 import type { PersistenceState } from "./features/projects/types";
-import { createDefaultAssistantMock } from "./phase2/mockAssistantClient";
 import { useAppStore } from "./store/appStore";
 import "./styles.css";
 import type { CommandProposal } from "./types/assistant";
@@ -205,7 +205,7 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
   const [projectReloadToken, setProjectReloadToken] = useState(0);
   const lastRequest = useRef<string | null>(null);
   const workspaceRef = useRef<HTMLElement>(null);
-  const assistantClient = useMemo(() => createDefaultAssistantMock(), []);
+  const assistantServices = useMemo(() => getAssistantServices(), []);
   const projectRevisionRef = useRef<number | null>(null);
   const projectBlockedRef = useRef(false);
   const projectSuppressRef = useRef(false);
@@ -611,7 +611,9 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
         </section>
 
         <InspectorPanel
-          assistantClient={assistantClient}
+          assistantClient={assistantServices.client}
+          assistantHistory={assistantServices.history}
+          assistantEnabled={!assistantServices.remote || Boolean(projectId)}
           projectId={projectId ?? "unsaved-workspace"}
           summary={state.summary}
           measurement={state.measurement}

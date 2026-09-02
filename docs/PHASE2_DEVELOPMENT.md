@@ -14,7 +14,7 @@ pnpm supabase:test
 pnpm supabase:stop
 ```
 
-The ordered migrations create projects, activity, conversations, usage records and the future vector corpus. The final hardening migration makes profiles private, removes browser deletion of append-only records, aligns project events with the eight command contracts, supplies explicit Data API grants, optimizes tenant RLS checks and covers foreign-key indexes. `.env.local`, `supabase/.temp/` and Supabase secret files remain ignored.
+The ordered migrations create projects, activity, conversations, usage records and the vector corpus. Phase 2.2 adds idempotent message request IDs, full-text indexing and a service-role-only hybrid retrieval function. The hardening migration makes profiles private, removes browser deletion of append-only records, aligns project events with the eight command contracts, supplies explicit Data API grants, optimizes tenant RLS checks and covers foreign-key indexes. `.env.local`, `supabase/.temp/` and Supabase secret files remain ignored.
 
 `pnpm supabase:reset` and `pnpm supabase:test` are the runtime database gate. They require Docker Desktop's Linux engine; static migration-security tests do not replace that gate.
 
@@ -34,18 +34,20 @@ The isolated platform E2E uses the production Supabase SDK and adapters while si
 
 ## Assistant backend
 
-The `biofold-chat` Edge Function scaffold validates origin, method, authorization presence and request shape, then returns a deliberate `MODEL_UNAVAILABLE` response. It contains no development bypass and no provider secret.
+`biofold-chat` now verifies the bearer session with Supabase Auth, proves project/conversation ownership through the user-scoped RLS client, claims an idempotent request, enforces a six-request-per-minute limit, retrieves curated evidence with reciprocal-rank hybrid search, enriches a loaded PDB through official RCSB/UniProt endpoints with a seven-day cache, validates OpenRouter structured output against the same eight command inputs and persists messages plus usage. External lookup failures degrade to the local corpus. Citations are built from retrieved records; the model cannot supply arbitrary citation URLs.
 
-The production integration will authorize the user in code, load the project through RLS, retrieve curated evidence, and call OpenRouter with a server-only `OPENROUTER_API_KEY`. Never add that key to a `VITE_*` variable or repository file. The current inspector uses a deterministic local client so its streaming, cancellation, citations and confirmed-command UX can be tested without presenting generated content as live AI.
+The browser receives typed SSE and only reads conversation history through `AssistantHistoryPort`. It never receives the OpenRouter key or service role. Proposals remain inert until the user presses **Apply**, after which they execute through the existing Command Bus and append `Assistant · confirmed` activity.
+
+For local work, copy `supabase/functions/.env.example` to the ignored `supabase/functions/.env.local`, start Supabase, then run `pnpm supabase:functions`. `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are supplied automatically by the local runtime; hosted secrets must be configured in Supabase, never Vercel or a `VITE_*` variable.
 
 ## Remaining production gates
 
 1. Start Docker and run the migrations/RLS tests against a clean local Supabase database.
 2. Review the resulting schema with Supabase Security and Performance Advisors.
 3. Apply migrations to a non-production Supabase branch and repeat two-user isolation tests.
-4. Implement authenticated RAG and OpenRouter only inside `biofold-chat`, then replace the deterministic client.
+4. Run the Assistant vertical slice with a disposable OpenRouter limit and verify request replay, cancellation, rate limiting and citations.
 5. Apply to BioFold real only after those checks and an explicit owner-approved backup/deployment window.
 
 ## Knowledge corpus
 
-`knowledge/manifest.json` records the embedding contract, source metadata and SHA-256 checksums. Local content is authored for BioFold under MIT. RCSB and UniProt are declared as live metadata providers and are not scraped into the repository.
+`knowledge/manifest.json` records the embedding contract, source metadata and SHA-256 checksums. Local content is authored for BioFold under MIT. RCSB and UniProt are live metadata providers: their results are fetched on demand by the Edge Function and cached in `structure_metadata`; they are not scraped into the repository.

@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(15);
+select plan(18);
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
@@ -125,6 +125,20 @@ select lives_ok(
   'owner A can insert a user-authored message'
 );
 
+select lives_ok(
+  $$insert into public.messages (conversation_id, request_id, sender, content)
+    values ('aa000000-0000-4000-8000-000000000001', 'request-idempotent', 'user', 'Idempotent question')$$,
+  'the first durable assistant request message is accepted'
+);
+
+select throws_ok(
+  $$insert into public.messages (conversation_id, request_id, sender, content)
+    values ('aa000000-0000-4000-8000-000000000001', 'request-idempotent', 'user', 'Duplicate question')$$,
+  '23505',
+  'duplicate key value violates unique constraint "uq_messages_conversation_request_sender"',
+  'the same request cannot persist the same sender twice'
+);
+
 select throws_ok(
   $$insert into public.messages (conversation_id, sender, content)
     values ('aa000000-0000-4000-8000-000000000001', 'assistant', 'Spoofed answer')$$,
@@ -163,6 +177,21 @@ select throws_ok(
   '42501',
   'permission denied for table projects',
   'anonymous clients cannot read private projects'
+);
+
+reset role;
+
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.hybrid_search_knowledge(text,extensions.vector,integer,double precision,double precision,integer)',
+    'EXECUTE'
+  ) and has_function_privilege(
+    'service_role',
+    'public.hybrid_search_knowledge(text,extensions.vector,integer,double precision,double precision,integer)',
+    'EXECUTE'
+  ),
+  'hybrid retrieval is executable only by the trusted server role'
 );
 
 select * from finish();

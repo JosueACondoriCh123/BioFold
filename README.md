@@ -207,6 +207,7 @@ The persistent layer is backed by Supabase PostgreSQL migrations located in [`su
 4. **`20260901000003_create_conversations_and_messages.sql`**: AI conversations with client writes restricted strictly to `sender = 'user'`.
 5. **`20260901000004_create_ai_requests_and_structure_metadata.sql`**: Token consumption telemetry and public mmCIF cache.
 6. **`20260901000005_create_knowledge_corpus.sql`**: Domain knowledge sources and 384-dimensional chunk embeddings (`vector(384)`) indexed with HNSW cosine distance (`vector_cosine_ops`).
+7. **`20260901225652_phase2_assistant_rag.sql`**: Idempotent Assistant messages, full-text search, reciprocal-rank hybrid retrieval and server-only execution privileges.
 
 ---
 
