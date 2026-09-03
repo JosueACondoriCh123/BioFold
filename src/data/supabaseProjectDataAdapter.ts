@@ -113,7 +113,16 @@ function mapDbEventToRecord(row: DbProjectEvent): ProjectEventRecord {
     throw new Error("Stored project event uses an unsupported evidence level.");
   }
   const command = row.command as ProjectEventRecord["command"];
-  const input = parseCommandInput(command, row.input);
+  let input: unknown;
+  try {
+    input = parseCommandInput(command, row.input);
+  } catch (err) {
+    if (row.status === "error") {
+      input = row.input;
+    } else {
+      throw err;
+    }
+  }
   return {
     id: row.id,
     projectId: row.project_id,

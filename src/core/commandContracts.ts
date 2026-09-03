@@ -1,4 +1,4 @@
-import { AMINO_ACID_CODES } from "./mutations";
+import { AMINO_ACID_CODES, toOneLetterCode } from "./mutations";
 import type {
   AtomRef,
   ColorScheme,
@@ -285,8 +285,9 @@ export const COMMAND_CONTRACTS: { [K in CommandName]: CommandContract<K> } = {
     annotations: {},
     parseInput(input) {
       const record = strictRecord(input, ["residue", "toAminoAcid"]);
-      const toAminoAcid =
+      const raw =
         typeof record.toAminoAcid === "string" ? record.toAminoAcid.trim().toUpperCase() : "";
+      const toAminoAcid = toOneLetterCode(raw) ?? raw;
       if (!AMINO_ACID_CODES.includes(toAminoAcid)) {
         throw new CommandValidationError(
           "toAminoAcid must be a standard one-letter amino-acid code.",
