@@ -148,7 +148,9 @@ export async function* streamOpenRouter(options: OpenRouterOptions): AsyncGenera
       usage: { include: true },
       max_completion_tokens: 1200,
       max_tokens: 1200,
-      provider: { require_parameters: true },
+      ...(options.model.startsWith("z-ai/") || options.model.endsWith(":free")
+        ? {}
+        : { provider: { require_parameters: true } }),
       messages: [{ role: "user", content: options.prompt }],
       response_format: OPENROUTER_RESPONSE_FORMAT,
     }),
