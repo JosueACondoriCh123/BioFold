@@ -141,15 +141,23 @@ export async function* streamOpenRouter(options: OpenRouterOptions): AsyncGenera
     },
     body: JSON.stringify({
       model: options.model,
+      ...(options.model.endsWith(":free")
+        ? { models: [options.model, options.model.replace(/:free$/, "")] }
+        : {}),
       stream: true,
       usage: { include: true },
       max_completion_tokens: 1200,
+      max_tokens: 1200,
       provider: { require_parameters: true },
       messages: [{ role: "user", content: options.prompt }],
       response_format: OPENROUTER_RESPONSE_FORMAT,
     }),
   });
-  if (!response.ok) throw new Error(`OpenRouter returned HTTP ${response.status}.`);
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    console.error(`OpenRouter returned HTTP ${response.status}: ${errorText}`);
+    throw new Error(`OpenRouter returned HTTP ${response.status}.`);
+  }
   if (!response.body) throw new Error("OpenRouter returned no response stream.");
 
   const answerDecoder = new IncrementalAnswerJsonDecoder();
