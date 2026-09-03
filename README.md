@@ -8,23 +8,7 @@ BioFold 3D bridges the gap between molecular visualization, persistent scientifi
 
 ## Architecture Overview
 
-```mermaid
-flowchart TB
-    subgraph Client["Client Browser (BioFold 3D)"]
-        UI["React UI (Dashboard, Lab, Inspector, Modals)"]
-        CB["Unified Command Bus (Typed Domain Commands)"]
-        Viewer["3Dmol.js WebGL Viewer"]
-        Worker["Geometry & Surface Web Worker"]
-        WebMCP["WebMCP Provider (document.modelContext)"]
-        AsstUI["Assistant Chat & Inspector Tabs"]
-    end
 
-    subgraph DataLayer["Persistence & AI Services"]
-        PDP["ProjectDataPort (Optimistic Revision Locking)"]
-        SupaDB[("Supabase PostgreSQL + pgvector + RLS")]
-        AsstClient["AssistantClient (Streaming & Citations)"]
-        RCSB["RCSB Protein Data Bank (mmCIF)"]
-    end
 
     UI -->|Dispatch| CB
     WebMCP -->|Propose/Execute| CB
