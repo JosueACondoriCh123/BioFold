@@ -785,22 +785,100 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
           </div>
         )}
 
-        {/* Screen 4: Research Copilot Screen (Full Width) */}
+        {/* Screen 4: Research Copilot Screen (Full Width 2-Column Layout) */}
         {activeScreen === "copilot" && (
           <div className="lab-full-screen-container">
-            <InspectorPanel
-              assistantClient={assistantServices.client}
-              assistantConversations={assistantServices.conversations}
-              assistantEnabled={!assistantServices.remote || Boolean(projectId)}
-              projectId={projectId ?? "unsaved-workspace"}
-              summary={state.summary}
-              measurement={state.measurement}
-              mutation={state.mutation}
-              activityEntries={state.activity}
-              onApplyProposal={executeAssistantProposal}
-              defaultTab="assistant"
-              className="panel inspector-panel copilot-full-panel"
-            />
+            <div className="bf-copilot-screen-layout" role="region" aria-label="Research Copilot Workspace">
+              <aside className="bf-copilot-sidebar panel" aria-label="Copilot Context and Knowledge">
+                <div className="panel-title">
+                  <div className="panel-title-icon">
+                    <Bot size={18} />
+                  </div>
+                  <div>
+                    <span>AI AGENT COPILOT</span>
+                    <h2>Research Copilot</h2>
+                  </div>
+                </div>
+
+                <section className="control-section">
+                  <div className="section-label">
+                    <span>AI Model & Quota</span>
+                    <small>OpenRouter</small>
+                  </div>
+                  <div className="bf-copilot-quota-card">
+                    <div className="bf-quota-row">
+                      <span>Model:</span>
+                      <strong>GPT-5-mini</strong>
+                    </div>
+                    <div className="bf-quota-row">
+                      <span>Daily Budget:</span>
+                      <strong style={{ color: "#5ccfb5" }}>$1.00 USD</strong>
+                    </div>
+                    <div className="bf-quota-row">
+                      <span>Rate Window:</span>
+                      <span>6 req / 60s</span>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="control-section">
+                  <div className="section-label">
+                    <span>Grounded RAG Sources</span>
+                    <small>Live Graph</small>
+                  </div>
+                  <div className="bf-rag-sources-list">
+                    <div className="bf-rag-source-item">
+                      <span className="live-dot" />
+                      <span>RCSB PDB REST / GraphQL</span>
+                    </div>
+                    <div className="bf-rag-source-item">
+                      <span className="live-dot" />
+                      <span>UniProtKB Reference Data</span>
+                    </div>
+                    <div className="bf-rag-source-item">
+                      <span className="live-dot" />
+                      <span>BioFold Vector Corpus (384d)</span>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="control-section">
+                  <div className="section-label">
+                    <span>Active 3D Context</span>
+                    <small>Pinned</small>
+                  </div>
+                  <div className="bf-current-target-card">
+                    <div className="bf-target-id">{state.structure?.id ?? pdbId}</div>
+                    <div className="bf-target-name">{currentCatalogItem?.name ?? "Molecular structure"}</div>
+                    <button
+                      type="button"
+                      className="bf-return-studio-btn"
+                      onClick={() => setActiveScreen("studio")}
+                      style={{ marginTop: "6px" }}
+                    >
+                      <Eye size={14} />
+                      <span>Inspect in 3D Studio</span>
+                    </button>
+                  </div>
+                </section>
+              </aside>
+
+              <main className="bf-copilot-main panel" aria-label="Copilot Conversation">
+                <InspectorPanel
+                  assistantClient={assistantServices.client}
+                  assistantConversations={assistantServices.conversations}
+                  assistantEnabled={!assistantServices.remote || Boolean(projectId)}
+                  projectId={projectId ?? "unsaved-workspace"}
+                  summary={state.summary}
+                  measurement={state.measurement}
+                  mutation={state.mutation}
+                  activityEntries={state.activity}
+                  onApplyProposal={executeAssistantProposal}
+                  defaultTab="assistant"
+                  className="inspector-panel-inner"
+                />
+              </main>
+            </div>
           </div>
         )}
 

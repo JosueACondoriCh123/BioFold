@@ -1,30 +1,30 @@
-﻿import { useState, useMemo } from "react";
-import { Dna, Eye, Play, Sparkles } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Dna, Eye, Layers, Microscope, Play, Sparkles, Zap } from "lucide-react";
 import type { MutationPreview, StructureSummary } from "../../types/domain";
 import { getCatalogItem } from "../../data/molecularCatalog";
 import "./workbench.css";
 
 const STANDARD_AMINO_ACIDS = [
-  { code: "ALA", letter: "A", name: "Alanine" },
-  { code: "ARG", letter: "R", name: "Arginine" },
-  { code: "ASN", letter: "N", name: "Asparagine" },
-  { code: "ASP", letter: "D", name: "Aspartate" },
-  { code: "CYS", letter: "C", name: "Cysteine" },
-  { code: "GLN", letter: "Q", name: "Glutamine" },
-  { code: "GLU", letter: "E", name: "Glutamate" },
-  { code: "GLY", letter: "G", name: "Glycine" },
-  { code: "HIS", letter: "H", name: "Histidine" },
-  { code: "ILE", letter: "I", name: "Isoleucine" },
-  { code: "LEU", letter: "L", name: "Leucine" },
-  { code: "LYS", letter: "K", name: "Lysine" },
-  { code: "MET", letter: "M", name: "Methionine" },
-  { code: "PHE", letter: "F", name: "Phenylalanine" },
-  { code: "PRO", letter: "P", name: "Proline" },
-  { code: "SER", letter: "S", name: "Serine" },
-  { code: "THR", letter: "T", name: "Threonine" },
-  { code: "TRP", letter: "W", name: "Tryptophan" },
-  { code: "TYR", letter: "Y", name: "Tyrosine" },
-  { code: "VAL", letter: "V", name: "Valine" },
+  { code: "ALA", letter: "A", name: "Alanine", type: "aliphatic", color: "#6fe4cb" },
+  { code: "ARG", letter: "R", name: "Arginine", type: "basic", color: "#55a8ff" },
+  { code: "ASN", letter: "N", name: "Asparagine", type: "polar", color: "#8de2d6" },
+  { code: "ASP", letter: "D", name: "Aspartate", type: "acidic", color: "#ff7380" },
+  { code: "CYS", letter: "C", name: "Cysteine", type: "polar", color: "#e8c371" },
+  { code: "GLN", letter: "Q", name: "Glutamine", type: "polar", color: "#8de2d6" },
+  { code: "GLU", letter: "E", name: "Glutamate", type: "acidic", color: "#ff7380" },
+  { code: "GLY", letter: "G", name: "Glycine", type: "aliphatic", color: "#aab9b3" },
+  { code: "HIS", letter: "H", name: "Histidine", type: "basic", color: "#55a8ff" },
+  { code: "ILE", letter: "I", name: "Isoleucine", type: "aliphatic", color: "#6fe4cb" },
+  { code: "LEU", letter: "L", name: "Leucine", type: "aliphatic", color: "#6fe4cb" },
+  { code: "LYS", letter: "K", name: "Lysine", type: "basic", color: "#55a8ff" },
+  { code: "MET", letter: "M", name: "Methionine", type: "aliphatic", color: "#e8c371" },
+  { code: "PHE", letter: "F", name: "Phenylalanine", type: "aromatic", color: "#b178ff" },
+  { code: "PRO", letter: "P", name: "Proline", type: "aliphatic", color: "#6fe4cb" },
+  { code: "SER", letter: "S", name: "Serine", type: "polar", color: "#8de2d6" },
+  { code: "THR", letter: "T", name: "Threonine", type: "polar", color: "#8de2d6" },
+  { code: "TRP", letter: "W", name: "Tryptophan", type: "aromatic", color: "#b178ff" },
+  { code: "TYR", letter: "Y", name: "Tyrosine", type: "aromatic", color: "#b178ff" },
+  { code: "VAL", letter: "V", name: "Valine", type: "aliphatic", color: "#6fe4cb" },
 ];
 
 export interface MutationWorkbenchProps {
@@ -46,7 +46,6 @@ export function MutationWorkbench({
 }: MutationWorkbenchProps) {
   const catalogItem = useMemo(() => getCatalogItem(currentPdbId), [currentPdbId]);
 
-  // Derive residue list from summary or create representative sample sequence
   const sampleResidues = useMemo(() => {
     if (summary && summary.residueCount > 0) {
       const list = [];
@@ -96,72 +95,45 @@ export function MutationWorkbench({
   };
 
   return (
-    <div className="bf-workbench-container" role="region" aria-label="Sequence & Mutation Workbench">
-      <header className="bf-workbench-header">
-        <h2>
-          <Dna size={22} color="#5CCFB5" />
-          Sequence & In Silico Mutation Workbench
-        </h2>
-        <p>
-          Target: <strong>{currentPdbId}</strong> · {catalogItem?.name ?? "Custom Structure"} (
-          {summary ? `${summary.residueCount} residues, ${summary.atomCount} atoms` : "Loading structure summary..."}
-          )
-        </p>
-      </header>
-
-      <div className="bf-workbench-grid">
-        {/* Left: Sequence Strip */}
-        <section className="bf-workbench-panel" aria-label="Residue Sequence Track">
-          <h3 className="bf-workbench-panel-title">
-            <Sparkles size={16} color="#5ccfb5" />
-            1D Primary Residue Track (Chain {selectedResidue.chain})
-          </h3>
-          <p style={{ margin: 0, fontSize: "12px", color: "#aab9b3" }}>
-            Click on any residue along the chain to select it for in silico mutation modeling or 3D spatial alignment.
-          </p>
-
-          <div className="bf-sequence-strip" role="listbox" aria-label="Amino acid sequence">
-            {sampleResidues.map((res) => {
-              const isSelected =
-                res.chain === selectedResidue.chain && res.number === selectedResidue.number;
-              return (
-                <button
-                  key={`${res.chain}:${res.number}`}
-                  type="button"
-                  className={`bf-seq-residue-chip ${isSelected ? "is-selected" : ""}`}
-                  onClick={() => handleSelectResidue(res.chain, res.number, res.code)}
-                  role="option"
-                  aria-selected={isSelected}
-                  title={`${res.chain}:${res.number} (${res.name})`}
-                >
-                  <span className="bf-seq-code">{res.letter}</span>
-                  <span className="bf-seq-num">{res.number}</span>
-                </button>
-              );
-            })}
+    <div className="bf-workbench-container lab-screen-layout" role="region" aria-label="Sequence & Mutation Workbench">
+      {/* Left Sidebar: Specialized In-Silico Variant Controls */}
+      <aside className="bf-workbench-sidebar panel" aria-label="Variant Parameters">
+        <div className="panel-title">
+          <div className="panel-title-icon">
+            <Dna size={18} />
           </div>
+          <div>
+            <span>VARIANT ENGINE</span>
+            <h2>Sequence Workbench</h2>
+          </div>
+        </div>
 
-          <div style={{ display: "flex", gap: "10px", marginTop: "auto" }}>
-            {onSwitchScreen && (
-              <button
-                type="button"
-                className="bf-mol-action-btn-secondary"
-                onClick={() => onSwitchScreen("studio")}
-                style={{ flex: 1 }}
-              >
-                <Eye size={14} />
-                <span>View Focus in 3D Studio</span>
-              </button>
-            )}
+        {/* Section 1: Target Metadata */}
+        <section className="control-section">
+          <div className="section-label">
+            <span>Target Structure</span>
+            <small>Active</small>
+          </div>
+          <div className="bf-workbench-target-box">
+            <div className="bf-wb-target-row">
+              <strong className="bf-wb-pdb-id">{currentPdbId.toUpperCase()}</strong>
+              <span className="bf-wb-chain-tag">Chain {selectedResidue.chain}</span>
+            </div>
+            <div className="bf-wb-target-name">{catalogItem?.name ?? "Crambin"}</div>
+            <div className="bf-wb-stats-chips">
+              <span>{summary?.residueCount ?? 46} Residues</span>
+              <span>{summary?.chainCount ?? 1} Chains</span>
+              <span>5.0 Å Cutoff</span>
+            </div>
           </div>
         </section>
 
-        {/* Right: In Silico Mutation Panel */}
-        <section className="bf-workbench-panel" aria-label="In Silico Mutation Form">
-          <h3 className="bf-workbench-panel-title">
-            <Dna size={16} color="#5ccfb5" />
-            In Silico Variant Modeling
-          </h3>
+        {/* Section 2: In Silico Mutation Form */}
+        <section className="control-section">
+          <div className="section-label">
+            <span>Mutation Setup</span>
+            <small>Coordinate</small>
+          </div>
 
           <div className="bf-mutation-form">
             <div className="bf-form-group">
@@ -201,66 +173,138 @@ export function MutationWorkbench({
               <span>{isComputing ? "Computing steric context…" : "Compute Mutation Impact"}</span>
             </button>
           </div>
+        </section>
 
-          {mutation ? (
-            <div className="bf-mutation-result-box" aria-label="Mutation preview results">
-              <h4 className="bf-mutation-result-title">
-                Variant: {mutation.originalAminoAcid}
-                {mutation.residue.residueNumber}
-                {mutation.targetAminoAcid} (Chain {mutation.residue.chain})
-              </h4>
+        {/* Section 3: Navigation Actions */}
+        <section className="control-section">
+          <div className="section-label">
+            <span>Spatial Inspection</span>
+            <small>3D View</small>
+          </div>
+          <button
+            type="button"
+            className="bf-return-studio-btn"
+            onClick={() => onSwitchScreen?.("studio")}
+            style={{ width: "100%" }}
+          >
+            <Eye size={14} />
+            <span>View Focus in 3D Studio</span>
+          </button>
+        </section>
+      </aside>
 
-              {mutation.heuristics && mutation.heuristics.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  {mutation.heuristics.map((h) => (
-                    <div
-                      key={h.dimension}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        fontSize: "11px",
-                        padding: "3px 6px",
-                        borderRadius: "4px",
-                        background: "#182622",
-                      }}
-                    >
-                      <span style={{ textTransform: "capitalize", color: "#aab9b3" }}>{h.dimension}:</span>
-                      <strong style={{ color: h.changed ? "#e0ba7b" : "#5ccfb5" }}>
-                        {h.from} → {h.to} ({h.changed ? "altered" : "preserved"})
-                      </strong>
+      {/* Right Main Stage: 1D Ribbon, Deltas, Contacts, and Heuristics */}
+      <main className="bf-workbench-main panel" aria-label="Sequence and Spatial Analysis">
+        {/* Track 1: 1D Primary Sequence Strip */}
+        <section className="bf-seq-track-card" aria-label="Residue Sequence Track">
+          <div className="bf-track-header">
+            <div className="bf-track-title">
+              <Sparkles size={16} color="#5ccfb5" />
+              <h3>1D Primary Residue Track (Chain {selectedResidue.chain})</h3>
+            </div>
+            <span className="bf-track-hint">Click any residue to model in silico substitution</span>
+          </div>
+
+          <div className="bf-sequence-strip" role="listbox" aria-label="Amino acid sequence">
+            {sampleResidues.map((res) => {
+              const isSelected =
+                res.chain === selectedResidue.chain && res.number === selectedResidue.number;
+              return (
+                <button
+                  key={`${res.chain}:${res.number}`}
+                  type="button"
+                  className={`bf-seq-residue-chip ${isSelected ? "is-selected" : ""}`}
+                  onClick={() => handleSelectResidue(res.chain, res.number, res.code)}
+                  role="option"
+                  aria-selected={isSelected}
+                  title={`${res.chain}:${res.number} (${res.name})`}
+                >
+                  <span className="bf-seq-code" style={{ color: res.color }}>{res.letter}</span>
+                  <span className="bf-seq-num">{res.number}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Track 2: In Silico Result and Spatial Contacts Grid */}
+        <div className="bf-wb-details-grid">
+          {/* Spatial Neighborhood Panel */}
+          <section className="bf-wb-detail-card" aria-label="Spatial Neighborhood">
+            <div className="bf-track-title">
+              <Layers size={16} color="#5ccfb5" />
+              <h3>Spatial Neighborhood Contacts (5.0 Å)</h3>
+            </div>
+
+            {mutation?.neighbors && mutation.neighbors.length > 0 ? (
+              <div className="bf-neighbor-contacts-list">
+                <div className="bf-neighbor-summary">
+                  <span>Detected Contact Residues:</span>
+                  <strong>{mutation.neighbors.length} neighbors within 5.0 Å sphere</strong>
+                </div>
+                <div className="bf-neighbor-chips">
+                  {mutation.neighbors.map((n) => (
+                    <div key={`${n.chain}:${n.residueNumber}`} className="bf-contact-chip">
+                      <span className="bf-contact-res">{n.chain}:{n.residueNumber} {n.residueName}</span>
+                      <span className="bf-contact-dist">{n.distance.toFixed(2)} Å</span>
                     </div>
                   ))}
                 </div>
-              )}
-
-              <div style={{ fontSize: "12px", color: "#aab9b3" }}>
-                <span>Neighboring residues within 5Å: </span>
-                <strong style={{ color: "#fff" }}>{mutation.neighbors?.length ?? 0} residues</strong>
               </div>
+            ) : (
+              <div className="bf-wb-empty-box">
+                <Microscope size={28} color="#79918b" />
+                <p>Run <strong>Compute Mutation Impact</strong> to calculate atom-level 5.0 Å neighbor distances.</p>
+              </div>
+            )}
+          </section>
 
-              {mutation.neighbors && mutation.neighbors.length > 0 && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                  {mutation.neighbors.map((n) => (
-                    <span key={`${n.chain}:${n.residueNumber}`} className="bf-residue-chip">
-                      {n.chain}:{n.residueNumber} ({n.distance.toFixed(1)}Å)
-                    </span>
-                  ))}
+          {/* Physicochemical Heuristics Panel */}
+          <section className="bf-wb-detail-card" aria-label="Heuristic Evaluation">
+            <div className="bf-track-title">
+              <Zap size={16} color="#5ccfb5" />
+              <h3>Physicochemical Heuristics</h3>
+            </div>
+
+            {mutation ? (
+              <div className="bf-heuristics-content">
+                <div className="bf-variant-title-chip">
+                  <h4 className="bf-mutation-result-title" style={{ margin: 0 }}>
+                    Variant: {mutation.originalAminoAcid}{mutation.residue.residueNumber}{mutation.targetAminoAcid} (Chain {mutation.residue.chain})
+                  </h4>
                 </div>
-              )}
 
-              {mutation.disclaimer && (
-                <p style={{ fontSize: "11px", color: "#879891", margin: 0, fontStyle: "italic" }}>
-                  {mutation.disclaimer}
-                </p>
-              )}
-            </div>
-          ) : (
-            <div style={{ fontSize: "12px", color: "#aab9b3", padding: "10px", textAlign: "center" }}>
-              Select an amino acid and click <em>Compute Mutation Impact</em> to calculate steric clashes and neighboring contacts.
-            </div>
-          )}
-        </section>
-      </div>
+                {mutation.heuristics && mutation.heuristics.length > 0 && (
+                  <div className="bf-heuristics-list">
+                    {mutation.heuristics.map((h) => (
+                      <div key={h.dimension} className="bf-heuristic-row">
+                        <span className="bf-h-dim">{h.dimension}:</span>
+                        <span className="bf-h-shift">
+                          {h.from} → {h.to}
+                        </span>
+                        <strong className={`bf-h-tag ${h.changed ? "is-altered" : "is-preserved"}`}>
+                          {h.changed ? "Altered" : "Preserved"}
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {mutation.disclaimer && (
+                  <div className="bf-wb-disclaimer">
+                    <p>{mutation.disclaimer}</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bf-wb-empty-box">
+                <Dna size={28} color="#79918b" />
+                <p>Ready for modeling. Choose a target amino acid from the left sidebar to begin in-silico screening.</p>
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
     </div>
   );
 }

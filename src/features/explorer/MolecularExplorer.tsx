@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Atom, Dna, ExternalLink, Microscope, Search, Sparkles } from "lucide-react";
+import { Atom, Dna, ExternalLink, Eye, Filter, Microscope, Search, Sparkles, Zap } from "lucide-react";
 import {
   CATALOG_CATEGORIES,
   MOLECULAR_CATALOG,
@@ -20,10 +20,15 @@ export function MolecularExplorer({
 }: MolecularExplorerProps) {
   const [selectedCategory, setSelectedCategory] = useState<MolecularCategory | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [highResOnly, setHighResOnly] = useState(false);
 
   const filteredMolecules = useMemo(() => {
-    return filterCatalog({ category: selectedCategory, query: searchQuery });
-  }, [selectedCategory, searchQuery]);
+    let list = filterCatalog({ category: selectedCategory, query: searchQuery });
+    if (highResOnly) {
+      list = list.filter((item) => item.resolution <= 2.0);
+    }
+    return list;
+  }, [selectedCategory, searchQuery, highResOnly]);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { all: MOLECULAR_CATALOG.length };
@@ -33,84 +38,195 @@ export function MolecularExplorer({
     return counts;
   }, []);
 
+  const currentMolecule = useMemo(
+    () => MOLECULAR_CATALOG.find((m) => m.id === currentPdbId.toUpperCase()),
+    [currentPdbId],
+  );
+
   return (
-    <div className="bf-explorer-container" role="region" aria-label="Molecular Explorer">
-      <header className="bf-explorer-header">
-        <div className="bf-explorer-title-row">
-          <h2>
-            <Microscope size={22} color="#5CCFB5" />
-            Molecular Explorer
-          </h2>
-          <span className="bf-explorer-count-badge">
-            Showing {filteredMolecules.length} of {MOLECULAR_CATALOG.length} molecules
-          </span>
-        </div>
-        <p className="bf-explorer-subtitle">
-          High-performance structural catalog covering enzymes, viral proteins, oncogenic drivers, membrane receptors, antibodies, and nucleic acid complexes.
-        </p>
-      </header>
-
-      <div className="bf-explorer-controls-bar">
-        <div className="bf-explorer-search-row">
-          <div className="bf-explorer-search-input-wrapper">
-            <Search size={16} className="bf-explorer-search-icon" />
-            <input
-              type="text"
-              className="bf-explorer-search-input"
-              placeholder="Search by PDB ID (e.g. 6LU7), protein name, organism, or UniProt ID..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              aria-label="Search molecules"
-            />
+    <div className="bf-explorer-container lab-screen-layout" role="region" aria-label="Molecular Explorer">
+      {/* Left Sidebar: Specialized Catalog Navigation & Filters */}
+      <aside className="bf-explorer-sidebar panel" aria-label="Catalog Filters">
+        <div className="panel-title">
+          <div className="panel-title-icon">
+            <Microscope size={18} />
+          </div>
+          <div>
+            <span>CATALOG ARCHIVE</span>
+            <h2>Molecular Explorer</h2>
           </div>
         </div>
 
-        <div className="bf-explorer-category-pills" role="tablist" aria-label="Category filter">
-          <button
-            type="button"
-            className={`bf-category-pill ${selectedCategory === "all" ? "is-active" : ""}`}
-            onClick={() => setSelectedCategory("all")}
-            role="tab"
-            aria-selected={selectedCategory === "all"}
-          >
-            <span>All</span>
-            <span className="bf-category-count">{categoryCounts.all}</span>
-          </button>
-          {CATALOG_CATEGORIES.map((cat) => (
+        {/* Section 1: Catalog Statistics */}
+        <section className="control-section">
+          <div className="section-label">
+            <span>Archive Stats</span>
+            <small>Live</small>
+          </div>
+          <div className="bf-sidebar-stats-grid">
+            <div className="bf-stat-box">
+              <strong>62</strong>
+              <span>Structures</span>
+            </div>
+            <div className="bf-stat-box">
+              <strong>6</strong>
+              <span>Families</span>
+            </div>
+            <div className="bf-stat-box">
+              <strong>100%</strong>
+              <span>mmCIF</span>
+            </div>
+          </div>
+        </section>
+
+        {/* Section 2: Biological Classes */}
+        <section className="control-section">
+          <div className="section-label">
+            <span>Biological Classes</span>
+            <small>Taxonomy</small>
+          </div>
+          <div className="bf-category-nav-list" role="tablist" aria-label="Category filter">
             <button
-              key={cat.id}
               type="button"
-              className={`bf-category-pill ${selectedCategory === cat.id ? "is-active" : ""}`}
-              onClick={() => setSelectedCategory(cat.id)}
+              className={`bf-cat-nav-btn ${selectedCategory === "all" ? "is-active" : ""}`}
+              onClick={() => setSelectedCategory("all")}
               role="tab"
-              aria-selected={selectedCategory === cat.id}
+              aria-selected={selectedCategory === "all"}
             >
-              <span className="bf-category-dot" style={{ backgroundColor: cat.color }} />
-              <span>{cat.label}</span>
-              <span className="bf-category-count">{categoryCounts[cat.id]}</span>
+              <div className="bf-cat-label-row">
+                <span className="bf-cat-nav-dot" style={{ backgroundColor: "#5ccfb5" }} />
+                <span>All Molecules</span>
+              </div>
+              <span className="bf-cat-nav-count">{categoryCounts.all}</span>
             </button>
-          ))}
-        </div>
-      </div>
 
-      <div className="bf-explorer-grid">
-        {filteredMolecules.length === 0 ? (
-          <div className="bf-explorer-empty">
-            <Atom size={40} color="#aab9b3" />
-            <h3>No matching biomolecules found</h3>
-            <p>Try searching for a different term or selecting another category.</p>
+            {CATALOG_CATEGORIES.map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                className={`bf-cat-nav-btn ${selectedCategory === cat.id ? "is-active" : ""}`}
+                onClick={() => setSelectedCategory(cat.id)}
+                role="tab"
+                aria-selected={selectedCategory === cat.id}
+              >
+                <div className="bf-cat-label-row">
+                  <span className="bf-cat-nav-dot" style={{ backgroundColor: cat.color }} />
+                  <span>{cat.label}</span>
+                </div>
+                <span className="bf-cat-nav-count">{categoryCounts[cat.id]}</span>
+              </button>
+            ))}
           </div>
-        ) : (
-          filteredMolecules.map((item) => (
-            <MolecularCard
-              key={item.id}
-              item={item}
-              isCurrent={currentPdbId.toUpperCase() === item.id}
-              onSelect={onSelectMolecule}
-            />
-          ))
-        )}
-      </div>
+        </section>
+
+        {/* Section 3: Resolution Criteria */}
+        <section className="control-section">
+          <div className="section-label">
+            <span>Resolution Filter</span>
+            <small>Cryo/X-Ray</small>
+          </div>
+          <div className="segmented-grid">
+            <button
+              type="button"
+              className={!highResOnly ? "active" : ""}
+              onClick={() => setHighResOnly(false)}
+            >
+              All Res
+            </button>
+            <button
+              type="button"
+              className={highResOnly ? "active" : ""}
+              onClick={() => setHighResOnly(true)}
+              title="Filter molecules with resolution <= 2.0 Å"
+            >
+              ≤ 2.0 Å
+            </button>
+          </div>
+        </section>
+
+        {/* Section 4: Current Scene Context */}
+        <section className="control-section">
+          <div className="section-label">
+            <span>Active Scene Target</span>
+            <small>3D View</small>
+          </div>
+          <div className="bf-current-target-card">
+            <div className="bf-target-id">{currentPdbId.toUpperCase()}</div>
+            <div className="bf-target-name">Loaded Workspace Target</div>
+            <button
+              type="button"
+              className="bf-return-studio-btn"
+              onClick={() => onSelectMolecule(currentPdbId, "studio")}
+            >
+              <Eye size={14} />
+              <span>Inspect in 3D Studio</span>
+            </button>
+          </div>
+        </section>
+      </aside>
+
+      {/* Right Main Stage: Search, Controls, and Molecule Showcase Grid */}
+      <main className="bf-explorer-main panel" aria-label="Catalog Grid">
+        <header className="bf-explorer-main-header">
+          <div className="bf-explorer-search-row">
+            <div className="bf-explorer-search-input-wrapper">
+              <Search size={16} className="bf-explorer-search-icon" />
+              <input
+                type="text"
+                className="bf-explorer-search-input"
+                placeholder="Search 62 structures by PDB ID (e.g. 6LU7, 1CRN), name, organism, or UniProt..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label="Search molecules"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="bf-search-clear-btn"
+                  onClick={() => setSearchQuery("")}
+                  aria-label="Clear search"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <span className="bf-explorer-count-badge">
+              Showing {filteredMolecules.length} of {MOLECULAR_CATALOG.length} molecules
+            </span>
+          </div>
+        </header>
+
+        <div className="bf-explorer-grid">
+          {filteredMolecules.length === 0 ? (
+            <div className="bf-explorer-empty">
+              <Atom size={44} color="#5ccfb5" />
+              <h3>No matching biomolecules found</h3>
+              <p>Try searching for a different keyword or resetting your category filter.</p>
+              <button
+                type="button"
+                className="bf-reset-filters-btn"
+                onClick={() => {
+                  setSelectedCategory("all");
+                  setSearchQuery("");
+                  setHighResOnly(false);
+                }}
+              >
+                Reset all filters
+              </button>
+            </div>
+          ) : (
+            filteredMolecules.map((item) => (
+              <MolecularCard
+                key={item.id}
+                item={item}
+                isCurrent={currentPdbId.toUpperCase() === item.id}
+                onSelect={onSelectMolecule}
+              />
+            ))
+          )}
+        </div>
+      </main>
     </div>
   );
 }
@@ -129,7 +245,7 @@ function MolecularCard({
       <div className="bf-mol-card-top">
         <span className="bf-mol-id-badge">{item.id}</span>
         <div className="bf-mol-card-meta-tags">
-          <span className="bf-meta-tag">{item.resolution.toFixed(2)} �</span>
+          <span className="bf-meta-tag">{item.resolution.toFixed(2)} Å</span>
           <span className="bf-meta-tag">{item.method}</span>
           {isCurrent && <span className="bf-current-badge">Active</span>}
         </div>
@@ -168,6 +284,7 @@ function MolecularCard({
           title={`Analyze sequence & mutations of ${item.id}`}
         >
           <Dna size={13} />
+          <span>Workbench</span>
         </button>
 
         <a

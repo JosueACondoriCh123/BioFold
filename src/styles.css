@@ -524,11 +524,144 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 }
 
 .lab-full-screen-container {
+  grid-column: 1 / -1;
   flex: 1;
   display: flex;
   flex-direction: column;
   height: calc(100vh - 105px);
+  min-height: 0;
   overflow: hidden;
+}
+
+.lab-screen-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.lab-screen-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  gap: 16px;
+  scrollbar-width: thin;
+  scrollbar-color: #285248 transparent;
+}
+
+.lab-screen-main {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px;
+  scrollbar-width: thin;
+  scrollbar-color: #285248 transparent;
+}
+
+@media (max-width: 1000px) {
+  .lab-screen-layout {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .lab-screen-layout {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .lab-screen-sidebar {
+    height: auto;
+    overflow-y: visible;
+  }
+  .lab-screen-main {
+    height: auto;
+    overflow-y: visible;
+  }
+}
+
+.bf-copilot-screen-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.bf-copilot-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  scrollbar-width: thin;
+  scrollbar-color: #285248 transparent;
+}
+
+.bf-copilot-main {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.bf-copilot-main .inspector-panel {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  height: 100%;
+}
+
+.bf-copilot-quota-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line, #24352e);
+  border-radius: 8px;
+}
+
+.bf-quota-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted, #aab9b3);
+}
+
+.bf-quota-row strong {
+  color: #fff;
+  font-family: monospace;
+}
+
+.bf-rag-sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bf-rag-source-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(53, 224, 189, 0.04);
+  border: 1px solid rgba(53, 224, 189, 0.18);
+  font-size: 12px;
+  color: #d2f4eb;
 }
 }
 
