@@ -494,8 +494,6 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
         </form>
 
         <div className="header-actions">
-          <button className="sample-chip" onClick={() => loadStructure("1CRN")}>1CRN</button>
-          <button className="sample-chip" onClick={() => loadStructure("4HHB")}>4HHB</button>
           {projectId && <PersistenceIndicator
             status={persistenceStatus}
             revision={projectRevisionRef.current ?? undefined}
@@ -503,16 +501,6 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
             onRetry={() => setProjectReloadToken((value) => value + 1)}
             className="lab-persistence-indicator"
           />}
-          <div
-            className={`agent-status ${state.webmcpStatus === "ready" ? "is-ready" : ""} ${state.webmcpStatus === "partial" ? "is-partial" : ""}`}
-            title={state.webmcpError ?? (state.webmcpSupported ? "WebMCP tools registered" : "Human controls remain fully available")}
-          >
-            <span className="status-light" /><Bot size={16} />
-            <div>
-              <strong>{state.webmcpStatus === "registering" ? "Connecting agent" : state.webmcpSupported ? `${state.registeredToolCount} agent tools` : "Human mode"}</strong>
-              <span>{state.webmcpStatus === "ready" ? "WebMCP ready" : state.webmcpStatus === "partial" ? "WebMCP partial" : state.webmcpStatus === "error" ? "WebMCP error" : state.webmcpStatus === "registering" ? "Registering tools" : "WebMCP unavailable"}</span>
-            </div>
-          </div>
           <Link className="icon-button account-link" to="/app/account" aria-label="Account"><UserRound size={18} aria-hidden="true" /><span>Account</span></Link>
         </div>
       </header>
