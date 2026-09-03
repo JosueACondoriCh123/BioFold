@@ -1,4 +1,5 @@
 import type { CommandErrorCode } from "../types/domain";
+import { getCachedStructure, setCachedStructure } from "./structureCache";
 
 const FIXTURE_IDS = new Set(["1CRN", "4HHB"]);
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -103,10 +104,17 @@ export const structureGateway = {
       return { id, source: "fixture", format: "cif", data };
     }
 
+    // Check local IndexedDB / memory cache first
+    const cached = await getCachedStructure(id);
+    if (cached) {
+      return { id, source: "rcsb", format: "cif", data: cached };
+    }
+
     const data = await fetchTextWithLimits(
       `https://files.rcsb.org/download/${id}.cif`,
       signal,
     );
+    void setCachedStructure(id, data);
     return { id, source: "rcsb", format: "cif", data };
   },
 };
