@@ -17,6 +17,7 @@ import {
   Layers3,
   LoaderCircle,
   Maximize2,
+  Microscope,
   Minus,
   Palette,
   Plus,
@@ -42,6 +43,10 @@ import { captureWorkspaceSnapshot } from "./core/workspaceSnapshot";
 import { workspaceSession } from "./core/workspaceSession";
 import { getAssistantServices } from "./assistant/assistantService";
 import { InspectorPanel } from "./features/assistant/ui";
+import { MolecularExplorer } from "./features/explorer/MolecularExplorer";
+import { MutationWorkbench } from "./features/workbench/MutationWorkbench";
+import { AuditHistoryView } from "./features/audit/AuditHistoryView";
+import { getCatalogItem } from "./data/molecularCatalog";
 import { PersistenceIndicator } from "./features/projects/PersistenceIndicator";
 import type { PersistenceState } from "./features/projects/types";
 import { useAppStore } from "./store/appStore";
@@ -213,6 +218,15 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
   const persistenceControllerRef = useRef<AbortController | null>(null);
   const persistenceQueueRef = useRef<Promise<void>>(Promise.resolve());
   const cameraTimerRef = useRef<number | null>(null);
+
+  const [activeScreen, setActiveScreen] = useState<"studio" | "explorer" | "workbench" | "copilot" | "audit">("studio");
+  const currentCatalogItem = useMemo(() => getCatalogItem(state.structure?.id ?? pdbId), [state.structure?.id, pdbId]);
+
+  useEffect(() => {
+    if (activeScreen === "studio") {
+      window.setTimeout(() => viewerPort.resize(), 50);
+    }
+  }, [activeScreen]);
 
   useEffect(() => {
     if (active) document.title = `${state.structure?.id ? `${state.structure.id} · ` : ""}Laboratory · BioFold 3D`;
@@ -503,7 +517,85 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
         </div>
       </header>
 
+      {/* Secondary Laboratory Navigation for the 5 Specialized Screens */}
+      <nav className="lab-subnav" role="tablist" aria-label="Laboratory Workspaces">
+        <div className="lab-subnav-screens">
+          <button
+            type="button"
+            className={`lab-screen-tab ${activeScreen === "studio" ? "is-active" : ""}`}
+            onClick={() => setActiveScreen("studio")}
+            role="tab"
+            aria-selected={activeScreen === "studio"}
+            aria-label="Studio 3D"
+          >
+            <Microscope size={15} />
+            <span>Studio 3D</span>
+          </button>
+          <button
+            type="button"
+            className={`lab-screen-tab ${activeScreen === "explorer" ? "is-active" : ""}`}
+            onClick={() => setActiveScreen("explorer")}
+            role="tab"
+            aria-selected={activeScreen === "explorer"}
+            aria-label="Molecular Explorer"
+          >
+            <Layers3 size={15} />
+            <span>Molecular Explorer</span>
+            <span className="lab-screen-count-chip">52</span>
+          </button>
+          <button
+            type="button"
+            className={`lab-screen-tab ${activeScreen === "workbench" ? "is-active" : ""}`}
+            onClick={() => setActiveScreen("workbench")}
+            role="tab"
+            aria-selected={activeScreen === "workbench"}
+            aria-label="Sequence Workbench"
+          >
+            <Dna size={15} />
+            <span>Sequence Workbench</span>
+          </button>
+          <button
+            type="button"
+            className={`lab-screen-tab ${activeScreen === "copilot" ? "is-active" : ""}`}
+            onClick={() => setActiveScreen("copilot")}
+            role="tab"
+            aria-selected={activeScreen === "copilot"}
+            aria-label="Research Copilot"
+          >
+            <Bot size={15} />
+            <span>Research Copilot</span>
+          </button>
+          <button
+            type="button"
+            className={`lab-screen-tab ${activeScreen === "audit" ? "is-active" : ""}`}
+            onClick={() => setActiveScreen("audit")}
+            role="tab"
+            aria-selected={activeScreen === "audit"}
+            aria-label="Session Audit"
+          >
+            <Activity size={15} />
+            <span>Session Audit</span>
+            <span className="lab-screen-count-chip">{state.activity.length}</span>
+          </button>
+        </div>
+
+        <div className="lab-subnav-current">
+          <span className="lab-current-label">Active:</span>
+          <button
+            type="button"
+            className="lab-current-chip"
+            onClick={() => setActiveScreen("explorer")}
+            title="Browse all 52 molecules in Molecular Explorer"
+          >
+            <strong>{state.structure?.id ?? pdbId}</strong>
+            <span>{currentCatalogItem?.name ?? "Molecular structure"}</span>
+          </button>
+        </div>
+      </nav>
+
       <main ref={workspaceRef} id="workspace" className="workspace" tabIndex={-1} aria-label="Molecular laboratory">
+        {/* Screen 1: 3D Studio Workspace (always kept mounted to preserve WebGL context) */}
+        <div className="lab-studio-view" style={{ display: activeScreen === "studio" ? "contents" : "none" }}>
         <aside className="control-panel panel">
           <PanelTitle icon={<Waves size={18} />} eyebrow="Scene controls" title="Molecular view" />
 
@@ -652,6 +744,76 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
           <button className="reset-button" onClick={() => void commandBus.execute("reset_workspace", { scope: "all" }, { origin: "human" })}><RefreshCcw size={15} /> Clear workspace</button>
           </div>}
         />
+        </div>
+
+        {/* Screen 2: Molecular Explorer Screen */}
+        {activeScreen === "explorer" && (
+          <div className="lab-full-screen-container">
+            <MolecularExplorer
+              currentPdbId={state.structure?.id ?? pdbId}
+              onSelectMolecule={(selectedId, targetScreen) => {
+                void loadStructure(selectedId);
+                setActiveScreen(targetScreen ?? "studio");
+              }}
+            />
+          </div>
+        )}
+
+        {/* Screen 3: Sequence & Mutation Workbench Screen */}
+        {activeScreen === "workbench" && (
+          <div className="lab-full-screen-container">
+            <MutationWorkbench
+              currentPdbId={state.structure?.id ?? pdbId}
+              summary={state.summary}
+              mutation={state.mutation}
+              onExecuteMutation={async (chain, residueNumber, targetAminoAcid) => {
+                await commandBus.execute(
+                  "preview_mutation_context",
+                  { residue: { chain, residueNumber }, toAminoAcid: targetAminoAcid },
+                  { origin: "human" },
+                );
+              }}
+              onFocusResidue={(chain, residueNumber) => {
+                void commandBus.execute(
+                  "focus_residues",
+                  { residues: [{ chain, residueNumber }], label: true },
+                  { origin: "human" },
+                );
+              }}
+              onSwitchScreen={setActiveScreen}
+            />
+          </div>
+        )}
+
+        {/* Screen 4: Research Copilot Screen (Full Width) */}
+        {activeScreen === "copilot" && (
+          <div className="lab-full-screen-container">
+            <InspectorPanel
+              assistantClient={assistantServices.client}
+              assistantConversations={assistantServices.conversations}
+              assistantEnabled={!assistantServices.remote || Boolean(projectId)}
+              projectId={projectId ?? "unsaved-workspace"}
+              summary={state.summary}
+              measurement={state.measurement}
+              mutation={state.mutation}
+              activityEntries={state.activity}
+              onApplyProposal={executeAssistantProposal}
+              defaultTab="assistant"
+              className="panel inspector-panel copilot-full-panel"
+            />
+          </div>
+        )}
+
+        {/* Screen 5: Session Audit & History Screen */}
+        {activeScreen === "audit" && (
+          <div className="lab-full-screen-container">
+            <AuditHistoryView
+              activities={state.activity}
+              currentPdbId={state.structure?.id ?? pdbId}
+              projectId={projectId}
+            />
+          </div>
+        )}
       </main>
 
       {projectError && <div className="project-sync-error" role="alert">
