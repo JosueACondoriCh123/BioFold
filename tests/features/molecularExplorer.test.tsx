@@ -61,4 +61,25 @@ describe("Molecular Explorer Component (Phase 2.4)", () => {
 
     expect(onSelect).toHaveBeenCalledWith("1TIM", "workbench");
   });
+
+  it("opens import dialog and adds a custom structure to the catalog", async () => {
+    const onSelect = vi.fn();
+    render(<MolecularExplorer currentPdbId="1CRN" onSelectMolecule={onSelect} />);
+
+    const importBtn = screen.getByRole("button", { name: /Import or upload structure/i });
+    fireEvent.click(importBtn);
+
+    expect(screen.getByText("Import Molecular Structure")).toBeInTheDocument();
+
+    const pdbIdInput = screen.getByLabelText("PDB ID Code");
+    const nameInput = screen.getByLabelText(/Molecule Name/i);
+
+    fireEvent.change(pdbIdInput, { target: { value: "7C22" } });
+    fireEvent.change(nameInput, { target: { value: "SARS-CoV-2 Mpro Custom" } });
+
+    const submitBtn = screen.getByRole("button", { name: "Add to Catalog" });
+    fireEvent.click(submitBtn);
+
+    expect(screen.getByText("SARS-CoV-2 Mpro Custom")).toBeInTheDocument();
+  }, 15000);
 });

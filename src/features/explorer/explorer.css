@@ -1,4 +1,4 @@
-﻿.bf-explorer-container {
+.bf-explorer-container {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   gap: 12px;
@@ -461,6 +461,87 @@
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.bf-import-structure-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 8px;
+  background: rgba(53, 224, 189, 0.12);
+  border: 1px solid rgba(53, 224, 189, 0.35);
+  color: #5ccfb5;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.bf-import-structure-btn:hover {
+  background: rgba(53, 224, 189, 0.22);
+  border-color: #5ccfb5;
+  color: #fff;
+}
+
+/* Explorer Import Modal */
+.bf-explorer-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 9, 8, 0.78);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.bf-explorer-modal-dialog {
+  width: 100%;
+  max-width: 500px;
+  background: #0d1a16;
+  border: 1px solid #24352e;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: bfModalFadeIn 0.18s ease-out;
+}
+
+@keyframes bfModalFadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.bf-explorer-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #1c2e27;
+}
+
+.bf-explorer-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.bf-explorer-modal-body {
+  padding: 20px;
+}
+
+.bf-explorer-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 14px 20px;
+  background: rgba(0, 0, 0, 0.15);
+  border-top: 1px solid #1c2e27;
 }
 
 @media (max-width: 1000px) {

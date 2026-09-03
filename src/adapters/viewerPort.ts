@@ -199,7 +199,7 @@ class MolecularViewerPort {
     }
   }
 
-  prepareStructure(data: string, format: "cif"): PreparedStructure {
+  prepareStructure(data: string, format: "cif" | "pdb" = "cif"): PreparedStructure {
     if (!this.viewer) {
       throw new ViewerPortError("RENDER_FAILED", "The molecular viewer is not ready.");
     }
@@ -222,7 +222,7 @@ class MolecularViewerPort {
       if (error instanceof ViewerPortError) throw error;
       throw new ViewerPortError(
         "PARSE_FAILED",
-        error instanceof Error ? error.message : "The mmCIF structure could not be parsed.",
+        error instanceof Error ? error.message : "The molecular structure could not be parsed.",
       );
     }
   }

@@ -37,4 +37,10 @@ describe("structure gateway", () => {
     expect(result.source).toBe("rcsb");
     expect(fetchMock.mock.calls[0][0]).toBe("https://files.rcsb.org/download/7TIM.cif");
   });
+
+  it("detects CIF vs PDB formats accurately", async () => {
+    const { detectStructureFormat } = await import("../src/adapters/structureGateway");
+    expect(detectStructureFormat("data_1CRN\n#\nloop_\n_atom_site.group_PDB")).toBe("cif");
+    expect(detectStructureFormat("HEADER    PLANT SEED PROTEIN                      30-APR-81   1CRN\nATOM      1  N   THR A   1")).toBe("pdb");
+  });
 });

@@ -4,7 +4,7 @@ export type EvidenceLevel =
   | "heuristic"
   | "unavailable";
 
-export type ProvenanceSource = "fixture" | "rcsb" | "local-calculation";
+export type ProvenanceSource = "fixture" | "rcsb" | "custom" | "local-calculation";
 
 export type CommandErrorCode =
   | "INVALID_INPUT"
@@ -102,8 +102,8 @@ export interface StructureSummary {
 
 export interface LoadedStructure {
   id: string;
-  source: "fixture" | "rcsb";
-  format: "cif";
+  source: "fixture" | "rcsb" | "custom";
+  format: "cif" | "pdb";
   loadedAt: string;
 }
 
@@ -149,7 +149,7 @@ export interface CommandInputMap {
 export interface CommandOutputMap {
   load_structure: {
     structureId: string;
-    source: "fixture" | "rcsb";
+    source: "fixture" | "rcsb" | "custom";
     summary: StructureSummary;
   };
   get_structure_summary: StructureSummary;

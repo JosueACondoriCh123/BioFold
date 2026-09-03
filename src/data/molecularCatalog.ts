@@ -4,7 +4,8 @@ export type MolecularCategory =
   | "oncology"
   | "membrane"
   | "immunology"
-  | "nucleic";
+  | "nucleic"
+  | "custom";
 
 export interface CatalogCategoryMeta {
   id: MolecularCategory;
@@ -49,6 +50,12 @@ export const CATALOG_CATEGORIES: CatalogCategoryMeta[] = [
     label: "Nucleic Acids & Ribosomes",
     description: "DNA double helices, CRISPR-Cas9 complexes, tRNAs, and ribosomal subunits.",
     color: "#D48BE8",
+  },
+  {
+    id: "custom",
+    label: "Custom & Uploads",
+    description: "User-imported molecular structures and project files.",
+    color: "#ff8474",
   },
 ];
 
@@ -761,9 +768,73 @@ export const MOLECULAR_CATALOG: MolecularCatalogItem[] = [
   },
 ];
 
+export const CUSTOM_CATALOG_STORAGE_KEY = "biofold_custom_molecular_catalog";
+const memoryCatalogFallback: MolecularCatalogItem[] = [];
+
+export function getCustomCatalogItems(): MolecularCatalogItem[] {
+  try {
+    if (typeof localStorage === "undefined") return [...memoryCatalogFallback];
+    const raw = localStorage.getItem(CUSTOM_CATALOG_STORAGE_KEY);
+    if (!raw) return [...memoryCatalogFallback];
+    const parsed = JSON.parse(raw) as MolecularCatalogItem[];
+    for (const mem of memoryCatalogFallback) {
+      if (!parsed.some((p) => p.id === mem.id)) {
+        parsed.unshift(mem);
+      }
+    }
+    return parsed;
+  } catch {
+    return [...memoryCatalogFallback];
+  }
+}
+
+export function saveCustomCatalogItem(item: MolecularCatalogItem): void {
+  const upperId = item.id.trim().toUpperCase();
+  const newItem: MolecularCatalogItem = { ...item, id: upperId, category: "custom" };
+  const existingIdx = memoryCatalogFallback.findIndex((m) => m.id === upperId);
+  if (existingIdx >= 0) {
+    memoryCatalogFallback[existingIdx] = newItem;
+  } else {
+    memoryCatalogFallback.unshift(newItem);
+  }
+
+  try {
+    if (typeof localStorage !== "undefined") {
+      const current = getCustomCatalogItems();
+      const updated = current.filter((c) => c.id !== upperId);
+      updated.unshift(newItem);
+      localStorage.setItem(CUSTOM_CATALOG_STORAGE_KEY, JSON.stringify(updated));
+    }
+  } catch {
+    // Non-fatal
+  }
+}
+
+export function removeCustomCatalogItem(id: string): void {
+  const upperId = id.trim().toUpperCase();
+  const idx = memoryCatalogFallback.findIndex((m) => m.id === upperId);
+  if (idx >= 0) memoryCatalogFallback.splice(idx, 1);
+
+  try {
+    if (typeof localStorage !== "undefined") {
+      const current = getCustomCatalogItems();
+      const updated = current.filter((c) => c.id !== upperId);
+      localStorage.setItem(CUSTOM_CATALOG_STORAGE_KEY, JSON.stringify(updated));
+    }
+  } catch {
+    // Non-fatal
+  }
+}
+
+export function getAllCatalogItems(): MolecularCatalogItem[] {
+  const custom = getCustomCatalogItems();
+  const customFiltered = custom.filter((c) => !MOLECULAR_CATALOG.some((b) => b.id === c.id));
+  return [...customFiltered, ...MOLECULAR_CATALOG];
+}
+
 export function getCatalogItem(id: string): MolecularCatalogItem | undefined {
   const upper = id.trim().toUpperCase();
-  return MOLECULAR_CATALOG.find((item) => item.id === upper);
+  return getAllCatalogItems().find((item) => item.id === upper);
 }
 
 export function filterCatalog(options: {
@@ -773,7 +844,7 @@ export function filterCatalog(options: {
   const { category = "all", query = "" } = options;
   const cleanQuery = query.trim().toLowerCase();
 
-  return MOLECULAR_CATALOG.filter((item) => {
+  return getAllCatalogItems().filter((item) => {
     if (category !== "all" && item.category !== category) {
       return false;
     }

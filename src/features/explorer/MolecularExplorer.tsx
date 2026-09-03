@@ -1,12 +1,30 @@
-import { useState, useMemo } from "react";
-import { Atom, Dna, ExternalLink, Eye, Filter, Microscope, Search, Sparkles, Zap } from "lucide-react";
+import { useState, useMemo, useRef } from "react";
+import {
+  Atom,
+  Dna,
+  ExternalLink,
+  Eye,
+  Filter,
+  Microscope,
+  Search,
+  Sparkles,
+  Zap,
+  Plus,
+  Upload,
+  FileText,
+  X,
+  AlertCircle,
+} from "lucide-react";
 import {
   CATALOG_CATEGORIES,
-  MOLECULAR_CATALOG,
+  getAllCatalogItems,
+  saveCustomCatalogItem,
   filterCatalog,
   type MolecularCategory,
   type MolecularCatalogItem,
 } from "../../data/molecularCatalog";
+import { setCachedStructure } from "../../adapters/structureCache";
+import { detectStructureFormat } from "../../adapters/structureGateway";
 import "./explorer.css";
 
 export interface MolecularExplorerProps {
@@ -21,6 +39,26 @@ export function MolecularExplorer({
   const [selectedCategory, setSelectedCategory] = useState<MolecularCategory | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [highResOnly, setHighResOnly] = useState(false);
+  const [catalogVersion, setCatalogVersion] = useState(0);
+
+  // Import Dialog State
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importMode, setImportMode] = useState<"pdb_id" | "file">("pdb_id");
+  const [importPdbId, setImportPdbId] = useState("");
+  const [importName, setImportName] = useState("");
+  const [importDesc, setImportDesc] = useState("");
+  const [importFile, setImportFile] = useState<{
+    name: string;
+    content: string;
+    format: "cif" | "pdb";
+    size: number;
+  } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [isSavingImport, setIsSavingImport] = useState(false);
+  const [isDraggingImport, setIsDraggingImport] = useState(false);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
+
+  const allMolecules = useMemo(() => getAllCatalogItems(), [catalogVersion]);
 
   const filteredMolecules = useMemo(() => {
     let list = filterCatalog({ category: selectedCategory, query: searchQuery });
@@ -28,20 +66,112 @@ export function MolecularExplorer({
       list = list.filter((item) => item.resolution <= 2.0);
     }
     return list;
-  }, [selectedCategory, searchQuery, highResOnly]);
+  }, [selectedCategory, searchQuery, highResOnly, catalogVersion]);
 
   const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: MOLECULAR_CATALOG.length };
+    const counts: Record<string, number> = { all: allMolecules.length };
     for (const cat of CATALOG_CATEGORIES) {
-      counts[cat.id] = MOLECULAR_CATALOG.filter((m) => m.category === cat.id).length;
+      counts[cat.id] = allMolecules.filter((m) => m.category === cat.id).length;
     }
     return counts;
-  }, []);
+  }, [allMolecules]);
 
   const currentMolecule = useMemo(
-    () => MOLECULAR_CATALOG.find((m) => m.id === currentPdbId.toUpperCase()),
-    [currentPdbId],
+    () => allMolecules.find((m) => m.id === currentPdbId.toUpperCase()),
+    [allMolecules, currentPdbId],
   );
+
+  function handleImportFileSelected(file: File) {
+    if (file.size > 10 * 1024 * 1024) {
+      setImportError("File exceeds the 10 MiB safety limit.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = (e.target?.result as string) || "";
+      if (!text.includes("ATOM") && !text.includes("data_") && !text.includes("_atom_site")) {
+        setImportError("The file does not appear to contain valid molecular structure records.");
+        return;
+      }
+      const format = detectStructureFormat(text);
+      const cleanName = file.name.replace(/\.[^/.]+$/, "");
+      const alnumOnly = cleanName.replace(/[^a-zA-Z0-9]/g, "");
+      let derivedId = "UPL1";
+      if (alnumOnly.length === 4) {
+        derivedId = alnumOnly.toUpperCase();
+      } else if (alnumOnly.length > 4) {
+        derivedId = alnumOnly.slice(0, 4).toUpperCase();
+      }
+      setImportPdbId(derivedId);
+      if (!importName.trim()) {
+        setImportName(cleanName);
+      }
+      setImportFile({
+        name: file.name,
+        content: text,
+        format,
+        size: file.size,
+      });
+      setImportError(null);
+    };
+    reader.onerror = () => {
+      setImportError("Failed to read the selected file.");
+    };
+    reader.readAsText(file);
+  }
+
+  async function handleConfirmImport() {
+    const normalized = importPdbId.trim().toUpperCase();
+    if (!normalized || !/^[A-Z0-9]{4}$/.test(normalized)) {
+      setImportError("PDB ID must contain exactly 4 alphanumeric characters.");
+      return;
+    }
+
+    setIsSavingImport(true);
+    setImportError(null);
+
+    try {
+      if (importMode === "file") {
+        if (!importFile) {
+          setImportError("Please choose or drop a PDB/CIF file.");
+          setIsSavingImport(false);
+          return;
+        }
+        await setCachedStructure(normalized, importFile.content);
+        saveCustomCatalogItem({
+          id: normalized,
+          name: importName.trim() || importFile.name,
+          category: "custom",
+          organism: "User Upload",
+          resolution: 0,
+          method: "Synthetic",
+          description: importDesc.trim() || `Uploaded structure from ${importFile.name}.`,
+        });
+      } else {
+        saveCustomCatalogItem({
+          id: normalized,
+          name: importName.trim() || `PDB ${normalized}`,
+          category: "custom",
+          organism: "RCSB Archive",
+          resolution: 0,
+          method: "X-ray",
+          description: importDesc.trim() || `Imported structure from PDB ${normalized}.`,
+        });
+      }
+
+      setCatalogVersion((v) => v + 1);
+      setSelectedCategory("custom");
+      setIsImportOpen(false);
+      setImportPdbId("");
+      setImportName("");
+      setImportDesc("");
+      setImportFile(null);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Failed to import structure.");
+    } finally {
+      setIsSavingImport(false);
+    }
+  }
 
   return (
     <div className="bf-explorer-container lab-screen-layout" role="region" aria-label="Molecular Explorer">
@@ -191,8 +321,21 @@ export function MolecularExplorer({
               )}
             </div>
 
+            <button
+              type="button"
+              className="bf-import-structure-btn"
+              onClick={() => {
+                setIsImportOpen(true);
+                setImportError(null);
+              }}
+              aria-label="Import or upload structure"
+            >
+              <Plus size={15} />
+              <span>Import PDB / File</span>
+            </button>
+
             <span className="bf-explorer-count-badge">
-              Showing {filteredMolecules.length} of {MOLECULAR_CATALOG.length} molecules
+              Showing {filteredMolecules.length} of {allMolecules.length} molecules
             </span>
           </div>
         </header>
@@ -227,6 +370,201 @@ export function MolecularExplorer({
           )}
         </div>
       </main>
+
+      {/* Explorer Import Modal */}
+      {isImportOpen && (
+        <div
+          className="bf-explorer-modal-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isSavingImport) setIsImportOpen(false);
+          }}
+        >
+          <div className="bf-explorer-modal-dialog" role="dialog" aria-labelledby="import-modal-title">
+            <header className="bf-explorer-modal-header">
+              <h3 id="import-modal-title">Import Molecular Structure</h3>
+              <button
+                type="button"
+                className="bf-modal-close-btn"
+                onClick={() => setIsImportOpen(false)}
+                disabled={isSavingImport}
+                aria-label="Close dialog"
+              >
+                <X size={18} />
+              </button>
+            </header>
+
+            <div className="bf-explorer-modal-body">
+              {importError && (
+                <div className="bf-modal-error" role="alert" style={{ marginBottom: 16 }}>
+                  <AlertCircle size={16} />
+                  <span>{importError}</span>
+                </div>
+              )}
+
+              <div className="bf-dialog-tabs" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  className={`bf-dialog-tab ${importMode === "pdb_id" ? "is-active" : ""}`}
+                  onClick={() => { setImportMode("pdb_id"); setImportError(null); }}
+                  aria-selected={importMode === "pdb_id"}
+                >
+                  RCSB PDB Archive ID
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className={`bf-dialog-tab ${importMode === "file" ? "is-active" : ""}`}
+                  onClick={() => { setImportMode("file"); setImportError(null); }}
+                  aria-selected={importMode === "file"}
+                >
+                  Upload File (.pdb / .cif)
+                </button>
+              </div>
+
+              {importMode === "pdb_id" ? (
+                <div className="bf-form-group">
+                  <label htmlFor="import-pdb-id">PDB ID Code</label>
+                  <input
+                    id="import-pdb-id"
+                    type="text"
+                    value={importPdbId}
+                    onChange={(e) => setImportPdbId(e.target.value.toUpperCase())}
+                    placeholder="e.g. 7C22, 1BNA, 4HHB"
+                    maxLength={4}
+                    disabled={isSavingImport}
+                  />
+                  <span className="bf-form-hint">
+                    Fetches the experimental structure directly from RCSB Protein Data Bank.
+                  </span>
+                </div>
+              ) : (
+                <div className="bf-form-group">
+                  <label>Local Molecular File</label>
+                  <div
+                    className={`bf-file-dropzone ${isDraggingImport ? "is-dragover" : ""} ${importFile ? "has-file" : ""}`}
+                    onDragOver={(e) => { e.preventDefault(); setIsDraggingImport(true); }}
+                    onDragLeave={() => setIsDraggingImport(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDraggingImport(false);
+                      const file = e.dataTransfer.files[0];
+                      if (file) handleImportFileSelected(file);
+                    }}
+                    onClick={() => {
+                      if (!importFile) importFileInputRef.current?.click();
+                    }}
+                  >
+                    <input
+                      ref={importFileInputRef}
+                      type="file"
+                      accept=".pdb,.cif,.ent,.txt"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImportFileSelected(file);
+                      }}
+                    />
+                    {!importFile ? (
+                      <div className="bf-dropzone-prompt">
+                        <Upload size={24} className="bf-dropzone-icon" />
+                        <span className="bf-dropzone-text">
+                          <strong>Choose a PDB/CIF file</strong> or drop here
+                        </span>
+                        <span className="bf-dropzone-sub">Supports .pdb, .cif, .ent up to 10 MiB</span>
+                      </div>
+                    ) : (
+                      <div className="bf-uploaded-file-card">
+                        <div className="bf-uploaded-file-info">
+                          <FileText size={20} className="bf-file-icon" />
+                          <div>
+                            <strong className="bf-file-name">{importFile.name}</strong>
+                            <span className="bf-file-meta">
+                              {importFile.format.toUpperCase()} · {(importFile.size / 1024).toFixed(1)} KB
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="bf-file-remove-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setImportFile(null);
+                            if (importFileInputRef.current) importFileInputRef.current.value = "";
+                          }}
+                          aria-label="Remove file"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ marginTop: 12 }}>
+                    <label htmlFor="import-file-pdb-id" style={{ fontSize: 12, marginBottom: 4 }}>
+                      Assigned 4-character Code <span className="bf-required">*</span>
+                    </label>
+                    <input
+                      id="import-file-pdb-id"
+                      type="text"
+                      value={importPdbId}
+                      maxLength={4}
+                      onChange={(e) => setImportPdbId(e.target.value.toUpperCase())}
+                      placeholder="e.g. UPL1"
+                      disabled={isSavingImport}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="bf-form-group">
+                <label htmlFor="import-name">Molecule Name (optional)</label>
+                <input
+                  id="import-name"
+                  type="text"
+                  value={importName}
+                  onChange={(e) => setImportName(e.target.value)}
+                  placeholder="e.g., SARS-CoV-2 Main Protease"
+                  maxLength={120}
+                  disabled={isSavingImport}
+                />
+              </div>
+
+              <div className="bf-form-group" style={{ marginBottom: 0 }}>
+                <label htmlFor="import-desc">Description (optional)</label>
+                <textarea
+                  id="import-desc"
+                  value={importDesc}
+                  onChange={(e) => setImportDesc(e.target.value)}
+                  placeholder="Notes about biological function, resolution, or origin…"
+                  rows={2}
+                  maxLength={400}
+                  disabled={isSavingImport}
+                />
+              </div>
+            </div>
+
+            <footer className="bf-explorer-modal-footer">
+              <button
+                type="button"
+                className="bf-button bf-button-ghost"
+                onClick={() => setIsImportOpen(false)}
+                disabled={isSavingImport}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="bf-button bf-modal-submit-btn"
+                onClick={handleConfirmImport}
+                disabled={isSavingImport}
+              >
+                {isSavingImport ? "Importing…" : "Add to Catalog"}
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

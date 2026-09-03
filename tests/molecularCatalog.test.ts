@@ -46,7 +46,7 @@ describe("Molecular Catalog (Phase 2.4 - 50+ Structures)", () => {
   });
 
   it("ensures all 6 biological categories have multiple representative structures", () => {
-    for (const cat of CATALOG_CATEGORIES) {
+    for (const cat of CATALOG_CATEGORIES.filter((c) => c.id !== "custom")) {
       const items = MOLECULAR_CATALOG.filter((m) => m.category === cat.id);
       expect(items.length).toBeGreaterThanOrEqual(8);
     }

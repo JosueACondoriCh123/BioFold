@@ -13,6 +13,8 @@ import { EmptyProjectsState } from "./EmptyProjectsState";
 import { ProjectDialog } from "./ProjectDialog";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { PersistenceIndicator } from "./PersistenceIndicator";
+import { setCachedStructure } from "../../adapters/structureCache";
+import { saveCustomCatalogItem, getCatalogItem } from "../../data/molecularCatalog";
 import type { PersistenceState } from "./types";
 import "./projects.css";
 
@@ -95,7 +97,16 @@ export function ProjectsDashboard({
   };
 
   // Create Project handler
-  async function handleCreateProject(data: { title: string; description: string; pdbId?: string }) {
+  async function handleCreateProject(data: {
+    title: string;
+    description: string;
+    pdbId?: string;
+    fileData?: {
+      name: string;
+      content: string;
+      format: "cif" | "pdb";
+    };
+  }) {
     mutationControllerRef.current?.abort();
     const controller = new AbortController();
     mutationControllerRef.current = controller;
@@ -103,10 +114,39 @@ export function ProjectsDashboard({
     setDialogError(null);
     setPersistenceStatus("saving");
 
+    const targetPdbId = data.pdbId ?? (data.fileData ? "UPL1" : "1CRN");
+
+    if (data.fileData) {
+      // 1. Cache the structure content in IndexedDB so the 3D viewer loads it immediately
+      await setCachedStructure(targetPdbId, data.fileData.content);
+
+      // 2. Register in custom molecular catalog so it shows up in Molecular Explorer
+      saveCustomCatalogItem({
+        id: targetPdbId,
+        name: data.title,
+        category: "custom",
+        organism: "User Upload",
+        resolution: 0,
+        method: "Synthetic",
+        description: data.description || `Custom structure uploaded from ${data.fileData.name}.`,
+      });
+    } else if (data.pdbId && !getCatalogItem(targetPdbId)) {
+      // If user provided a remote PDB ID not in catalog, also register it so it appears in Molecular Explorer
+      saveCustomCatalogItem({
+        id: targetPdbId,
+        name: data.title || `PDB ${targetPdbId}`,
+        category: "custom",
+        organism: "RCSB Archive",
+        resolution: 0,
+        method: "X-ray",
+        description: data.description || `Imported structure from PDB ${targetPdbId}.`,
+      });
+    }
+
     const input: CreateProjectInput = {
       title: data.title,
       description: data.description,
-      snapshot: createEmptyWorkspaceSnapshot(data.pdbId ?? "1CRN"),
+      snapshot: createEmptyWorkspaceSnapshot(targetPdbId, data.fileData ? "custom" : undefined),
     };
 
     const result = await dataPort.createProject(input, { signal: controller.signal });

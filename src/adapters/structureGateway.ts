@@ -16,10 +16,20 @@ export class StructureGatewayError extends Error {
   }
 }
 
+export type StructureFormat = "cif" | "pdb";
+
+export function detectStructureFormat(data: string): StructureFormat {
+  const head = data.slice(0, 2000).trim();
+  if (head.startsWith("data_") || head.includes("loop_") || head.includes("_atom_site")) {
+    return "cif";
+  }
+  return "pdb";
+}
+
 export interface StructurePayload {
   id: string;
-  source: "fixture" | "rcsb";
-  format: "cif";
+  source: "fixture" | "rcsb" | "custom";
+  format: StructureFormat;
   data: string;
 }
 
@@ -107,7 +117,8 @@ export const structureGateway = {
     // Check local IndexedDB / memory cache first
     const cached = await getCachedStructure(id);
     if (cached) {
-      return { id, source: "rcsb", format: "cif", data: cached };
+      const format = detectStructureFormat(cached);
+      return { id, source: FIXTURE_IDS.has(id) ? "fixture" : "custom", format, data: cached };
     }
 
     const data = await fetchTextWithLimits(

@@ -86,6 +86,41 @@ describe("Projects Feature Component Tests", () => {
     expect(screen.getByText(/Project “Crambin Disulfide Bonds” created/i)).toBeInTheDocument();
   });
 
+  it("creates a new project by uploading a PDB structure file", async () => {
+    const dataPort = new InMemoryProjectDataPort();
+    render(<ProjectsDashboard dataPort={dataPort} onOpenProject={vi.fn()} />);
+
+    const newBtn = screen.getByRole("button", { name: /New project/i });
+    fireEvent.click(newBtn);
+
+    const uploadTab = screen.getByRole("tab", { name: /Upload File/i });
+    fireEvent.click(uploadTab);
+
+    const titleInput = screen.getByLabelText(/Project title/i);
+    fireEvent.change(titleInput, { target: { value: "My Synthetic Protein" } });
+
+    const pdbContent = "HEADER    CUSTOM PROTEIN\nATOM      1  N   MET A   1      11.104  13.201  -9.041  1.00 10.00           N\n";
+    const file = new File([pdbContent], "custom_synth.pdb", { type: "text/plain" });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    if (fileInput) {
+      fireEvent.change(fileInput, { target: { files: [file] } });
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("custom_synth.pdb")).toBeInTheDocument();
+    });
+
+    const submitBtn = screen.getByRole("button", { name: "Create project" });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByText("My Synthetic Protein")).toBeInTheDocument();
+  });
+
   it("edits an existing project title and description", async () => {
     const dataPort = new InMemoryProjectDataPort();
     const createRes = await dataPort.createProject({

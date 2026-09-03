@@ -517,6 +517,142 @@
   margin-top: 4px;
 }
 
+/* Structure Source Tabs */
+.bf-dialog-tabs {
+  display: flex;
+  gap: 8px;
+  background: var(--bf-bg);
+  padding: 4px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  border: 1px solid var(--bf-input-line);
+}
+
+.bf-dialog-tab {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--bf-muted);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.bf-dialog-tab.is-active {
+  background: var(--bf-raised);
+  color: var(--bf-text);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.bf-dialog-tab:hover:not(.is-active) {
+  color: var(--bf-text);
+}
+
+/* File Dropzone */
+.bf-file-dropzone {
+  border: 2px dashed var(--bf-input-line);
+  border-radius: 10px;
+  padding: 20px 16px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.01);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.bf-file-dropzone:hover,
+.bf-file-dropzone.is-dragover {
+  border-color: var(--bf-accent);
+  background: rgba(53, 224, 189, 0.04);
+}
+
+.bf-file-dropzone.has-file {
+  border-style: solid;
+  border-color: rgba(53, 224, 189, 0.35);
+  background: rgba(53, 224, 189, 0.03);
+  padding: 12px 16px;
+}
+
+.bf-dropzone-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.bf-dropzone-icon {
+  color: var(--bf-accent);
+  margin-bottom: 2px;
+}
+
+.bf-dropzone-text {
+  font-size: 13px;
+  color: var(--bf-text);
+}
+
+.bf-dropzone-text strong {
+  color: var(--bf-accent);
+}
+
+.bf-dropzone-sub {
+  font-size: 11px;
+  color: var(--bf-muted);
+}
+
+/* Uploaded File Card */
+.bf-uploaded-file-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.bf-uploaded-file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+.bf-file-icon {
+  color: var(--bf-accent);
+  flex-shrink: 0;
+}
+
+.bf-file-name {
+  display: block;
+  font-size: 13px;
+  color: var(--bf-text);
+  word-break: break-all;
+}
+
+.bf-file-meta {
+  display: block;
+  font-size: 11px;
+  color: var(--bf-muted);
+}
+
+.bf-file-remove-btn {
+  background: transparent;
+  border: none;
+  color: var(--bf-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.14s ease;
+}
+
+.bf-file-remove-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--bf-rose);
+}
+
 .bf-modal-footer {
   display: flex;
   align-items: center;

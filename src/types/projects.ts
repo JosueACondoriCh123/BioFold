@@ -23,7 +23,7 @@ export interface WorkspaceSnapshotV1 {
   schemaVersion: 1;
   structure: {
     pdbId: string;
-    source: "fixture" | "rcsb";
+    source: "fixture" | "rcsb" | "custom";
   } | null;
   summary?: StructureSummary;
   view: {
@@ -156,16 +156,20 @@ export function parseViewerCameraState(input: unknown): ViewerCameraState {
   return input.slice() as unknown as ViewerCameraState;
 }
 
-export function createEmptyWorkspaceSnapshot(pdbId?: string): WorkspaceSnapshotV1 {
+export function createEmptyWorkspaceSnapshot(
+  pdbId?: string,
+  source?: "fixture" | "rcsb" | "custom",
+): WorkspaceSnapshotV1 {
   const normalized = pdbId?.trim().toUpperCase();
   if (normalized && !/^[A-Z0-9]{4}$/.test(normalized)) {
     throw new Error("A project structure must use a four-character PDB ID.");
   }
+  const determinedSource = source ?? (normalized === "1CRN" || normalized === "4HHB" ? "fixture" : "rcsb");
   return {
     schemaVersion: 1,
     structure: normalized ? {
       pdbId: normalized,
-      source: normalized === "1CRN" || normalized === "4HHB" ? "fixture" : "rcsb",
+      source: determinedSource,
     } : null,
     view: { representation: "cartoon", colorScheme: "chain", camera: null },
     surface: { visible: false, opacity: 0.72 },
@@ -192,7 +196,7 @@ export function parseWorkspaceSnapshot(input: unknown): WorkspaceSnapshotV1 {
   if (snapshot.structure !== null) {
     const structureValue = snapshot.structure;
     if (!structureValue || !/^[A-Z0-9]{4}$/.test(structureValue.pdbId) ||
-        (structureValue.source !== "fixture" && structureValue.source !== "rcsb") ||
+        (structureValue.source !== "fixture" && structureValue.source !== "rcsb" && structureValue.source !== "custom") ||
         (structureValue.source === "fixture" && structureValue.pdbId !== "1CRN" && structureValue.pdbId !== "4HHB")) {
       throw new Error("Workspace snapshot contains an invalid structure reference.");
     }
