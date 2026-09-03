@@ -613,6 +613,7 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
         <InspectorPanel
           assistantClient={assistantServices.client}
           assistantHistory={assistantServices.history}
+          assistantConversation={assistantServices.conversation}
           assistantEnabled={!assistantServices.remote || Boolean(projectId)}
           projectId={projectId ?? "unsaved-workspace"}
           summary={state.summary}

@@ -4,7 +4,7 @@ import { parseCommandProposal } from "../types/assistant";
 import type { AssistantHistoryPort, PersistedAssistantMessage } from "../types/assistant";
 import type { Database } from "../types/database.types";
 
-function parseStoredMessage(row: Database["public"]["Tables"]["messages"]["Row"]): PersistedAssistantMessage {
+export function parseStoredMessage(row: Database["public"]["Tables"]["messages"]["Row"]): PersistedAssistantMessage {
   if (row.sender !== "user" && row.sender !== "assistant" && row.sender !== "system") {
     throw new Error("Stored assistant history contains an unsupported sender.");
   }
@@ -36,14 +36,20 @@ export class SupabaseAssistantHistoryAdapter implements AssistantHistoryPort {
     if (!conversationId) return null;
 
     let messageQuery = this.client.from("messages").select("*").eq("conversation_id", conversationId)
-      .order("created_at", { ascending: true }).limit(100);
+      .order("created_at", { ascending: false }).limit(100);
     if (options?.signal) messageQuery = messageQuery.abortSignal(options.signal);
     const { data: messages, error: messageError } = await messageQuery;
     if (messageError) throw new Error(messageError.message);
-    return { conversationId, messages: (messages ?? []).map(parseStoredMessage) };
+    return { conversationId, messages: (messages ?? []).reverse().map(parseStoredMessage) };
   }
 }
 
 export class EmptyAssistantHistoryAdapter implements AssistantHistoryPort {
   async loadLatest() { return null; }
 }
+
+export {
+  SupabaseAssistantConversationAdapter,
+  InMemoryAssistantConversationAdapter,
+} from "./assistantConversation";
+

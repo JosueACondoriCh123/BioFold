@@ -417,6 +417,115 @@
   color: var(--bf-muted);
 }
 
+.bf-conversation-toolbar {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bf-conversation-select-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.bf-conversation-select {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: #1a2723;
+  border: 1px solid #334d42;
+  color: var(--bf-text);
+  font-size: 12px;
+  font-weight: 500;
+  outline: none;
+  transition: border-color 0.15s ease;
+  cursor: pointer;
+}
+
+.bf-conversation-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bf-conversation-select:focus {
+  border-color: var(--bf-accent);
+}
+
+.bf-conversation-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.bf-conversation-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: #1e312a;
+  border: 1px solid #3d5e50;
+  color: var(--bf-text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bf-conversation-action-btn:hover:not(:disabled) {
+  background: #284339;
+  color: #fff;
+}
+
+.bf-conversation-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.bf-conversation-action-btn.bf-btn-danger {
+  border-color: #5c2828;
+  background: #2b1717;
+  color: #ff9e9e;
+}
+
+.bf-conversation-action-btn.bf-btn-danger:hover:not(:disabled) {
+  background: #3d1c1c;
+  color: #ffb8b8;
+}
+
+.bf-conversation-rename-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.bf-conversation-rename-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: #182320;
+  border: 1px solid var(--bf-accent);
+  color: var(--bf-text);
+  font-size: 12px;
+  outline: none;
+}
+
+.bf-conversation-rename-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .bf-chat-messages-container {
   flex: 1;
   padding: 16px;

@@ -1,13 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseClient, getSupabaseEnvConfig } from "../auth/supabaseClient";
 import { createDefaultAssistantMock } from "../phase2/mockAssistantClient";
-import type { AssistantClient, AssistantHistoryPort } from "../types/assistant";
+import type { AssistantClient, AssistantConversationPort, AssistantHistoryPort } from "../types/assistant";
 import type { Database } from "../types/database.types";
 import { createAssistantHttpClient } from "./assistantClient";
-import { EmptyAssistantHistoryAdapter, SupabaseAssistantHistoryAdapter } from "./assistantHistory";
+import {
+  EmptyAssistantHistoryAdapter,
+  InMemoryAssistantConversationAdapter,
+  SupabaseAssistantConversationAdapter,
+  SupabaseAssistantHistoryAdapter,
+} from "./assistantHistory";
 
 export interface AssistantServices {
   client: AssistantClient;
+  conversation: AssistantConversationPort;
   history: AssistantHistoryPort;
   remote: boolean;
 }
@@ -22,17 +28,26 @@ export function getAssistantServices(): AssistantServices {
   if (supabase && config.url && config.publishableKey) {
     if (cachedClient !== supabase || !cachedServices) {
       cachedClient = supabase;
+      const conversationAdapter = new SupabaseAssistantConversationAdapter(supabase as SupabaseClient<Database>);
       cachedServices = {
         client: createAssistantHttpClient({
           endpoint: `${config.url.replace(/\/$/, "")}/functions/v1/biofold-chat`,
           publishableKey: config.publishableKey,
           getAccessToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null,
         }),
-        history: new SupabaseAssistantHistoryAdapter(supabase as SupabaseClient<Database>),
+        conversation: conversationAdapter,
+        history: conversationAdapter,
         remote: true,
       };
     }
     return cachedServices;
   }
-  return { client: createDefaultAssistantMock(), history: new EmptyAssistantHistoryAdapter(), remote: false };
+  const emptyAdapter = new InMemoryAssistantConversationAdapter();
+  return {
+    client: createDefaultAssistantMock(),
+    conversation: emptyAdapter,
+    history: new EmptyAssistantHistoryAdapter(),
+    remote: false,
+  };
 }
+

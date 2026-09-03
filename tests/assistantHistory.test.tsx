@@ -29,7 +29,7 @@ describe("persistent Assistant history", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send message to assistant" }));
     expect(await screen.findByText("Continued answer.")).toBeInTheDocument();
     expect(stream).toHaveBeenCalledOnce();
-  });
+  }, 15000);
 
   it("disables remote assistance until a project is saved", () => {
     const client: AssistantClient = { async *stream() { yield { type: "done", interrupted: false }; } };

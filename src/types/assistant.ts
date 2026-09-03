@@ -78,6 +78,32 @@ export interface AssistantConversationHistory {
   messages: PersistedAssistantMessage[];
 }
 
+export interface AssistantConversationSummary {
+  id: string;
+  projectId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssistantConversationDetail {
+  conversationId: string;
+  title: string;
+  projectId: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: PersistedAssistantMessage[];
+}
+
+export interface AssistantConversationPort {
+  list(projectId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationSummary[]>;
+  get(conversationId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationDetail | null>;
+  create(projectId: string, title?: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationSummary>;
+  rename(conversationId: string, title: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationSummary>;
+  delete(conversationId: string, options?: { signal?: AbortSignal }): Promise<void>;
+  loadLatest(projectId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationDetail | null>;
+}
+
 /** Read-only browser boundary. The Edge Function owns all message writes. */
 export interface AssistantHistoryPort {
   loadLatest(projectId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationHistory | null>;
@@ -105,7 +131,7 @@ export function parseAssistantRequest(input: unknown): AssistantRequest {
     ...(value.conversationId === undefined ? {} : {
       conversationId: requiredString(value.conversationId, "conversationId", 128),
     }),
-    message: requiredString(value.message, "message", 4_000),
+    message: requiredString(value.message, "message", 8_000),
   };
 }
 

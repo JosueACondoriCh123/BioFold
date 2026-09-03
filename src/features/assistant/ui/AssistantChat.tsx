@@ -1,11 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, Sparkles } from "lucide-react";
+import { Bot, Check, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import type {
   AssistantClient,
+  AssistantConversationPort,
+  AssistantConversationSummary,
   AssistantHistoryPort,
   AssistantRequest,
   CommandProposal,
+  PersistedAssistantMessage,
 } from "../../../types/assistant";
+import { generateUuid } from "../../../assistant/uuid";
 import type { ApplyProposalHandler, UiChatMessage } from "./types";
 import type { ActivityEntry } from "../../../types/domain";
 import { ChatMessageItem } from "./ChatMessageItem";
@@ -14,6 +18,7 @@ import { ChatInputArea } from "./ChatInputArea";
 export interface AssistantChatProps {
   assistantClient: AssistantClient;
   assistantHistory?: AssistantHistoryPort;
+  assistantConversation?: AssistantConversationPort;
   enabled?: boolean;
   projectId: string;
   conversationId?: string;
@@ -27,6 +32,7 @@ const EMPTY_ACTIVITY: ActivityEntry[] = [];
 export function AssistantChat({
   assistantClient,
   assistantHistory,
+  assistantConversation,
   enabled = true,
   projectId,
   conversationId,
@@ -35,9 +41,13 @@ export function AssistantChat({
   confirmedActivities = EMPTY_ACTIVITY,
 }: AssistantChatProps) {
   const [messages, setMessages] = useState<UiChatMessage[]>(initialMessages);
-  const [activeConversationId, setActiveConversationId] = useState(conversationId);
+  const [conversations, setConversations] = useState<AssistantConversationSummary[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | undefined>(conversationId);
   const [historyStatus, setHistoryStatus] = useState<"idle" | "loading" | "error">("idle");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isActionPending, setIsActionPending] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameTitle, setRenameTitle] = useState("");
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const confirmedActivitiesRef = useRef(confirmedActivities);
@@ -63,69 +73,299 @@ export function AssistantChat({
     };
   }, []);
 
+  const hydrateStoredMessages = useCallback((stored: PersistedAssistantMessage[]): UiChatMessage[] => {
+    return stored.map((message) => {
+      const applied = new Set(
+        message.proposals
+          .filter((proposal) =>
+            confirmedActivitiesRef.current.some(
+              (entry) =>
+                entry.agentKind === "assistant" &&
+                entry.approvedByUser &&
+                entry.sourceMessageId === message.id &&
+                entry.command === proposal.command &&
+                entry.status === "success",
+            ),
+          )
+          .map((proposal) => proposal.id),
+      );
+      return {
+        id: message.id,
+        sender: message.sender,
+        content: message.content,
+        citations: message.citations,
+        proposals: message.proposals,
+        ...(applied.size ? { appliedProposals: applied } : {}),
+        sourceMessageId: message.sender === "assistant" ? message.id : undefined,
+        createdAt: message.createdAt,
+      };
+    });
+  }, []);
+
+  // Conversation and history hydration
   useEffect(() => {
-    if (!assistantHistory || !enabled) return;
+    if ((!assistantConversation && !assistantHistory) || !enabled) return;
     const controller = new AbortController();
     setHistoryStatus("loading");
-    void assistantHistory.loadLatest(projectId, { signal: controller.signal }).then((history) => {
-      if (!history) {
-        setActiveConversationId(undefined);
-        if (initialMessages.length === 0) setMessages([]);
-      } else {
-        setActiveConversationId(history.conversationId);
-        setMessages(history.messages.map((message) => {
-          const applied = new Set(message.proposals.filter((proposal) => confirmedActivitiesRef.current.some((entry) =>
-            entry.agentKind === "assistant" && entry.approvedByUser && entry.sourceMessageId === message.id
-            && entry.command === proposal.command && entry.status === "success",
-          )).map((proposal) => proposal.id));
-          return {
-            id: message.id,
-            sender: message.sender,
-            content: message.content,
-            citations: message.citations,
-            proposals: message.proposals,
-            ...(applied.size ? { appliedProposals: applied } : {}),
-            sourceMessageId: message.sender === "assistant" ? message.id : undefined,
-            createdAt: message.createdAt,
-          };
-        }));
-      }
-      setHistoryStatus("idle");
-    }).catch((error) => {
-      if (controller.signal.aborted) return;
-      setHistoryStatus("error");
-      setMessages((previous) => [...previous, {
-        id: `history-error-${Date.now()}`,
-        sender: "system",
-        content: error instanceof Error ? error.message : "Conversation history could not be loaded.",
-        createdAt: new Date().toISOString(),
-        error: { code: "STREAM_FAILED", message: "Conversation history could not be loaded.", retryable: true },
-      }]);
-    });
+
+    if (assistantConversation) {
+      void (async () => {
+        try {
+          const list = await assistantConversation.list(projectId, { signal: controller.signal });
+          if (controller.signal.aborted) return;
+          setConversations(list);
+
+          const targetId = activeConversationId && list.some((c: AssistantConversationSummary) => c.id === activeConversationId)
+            ? activeConversationId
+            : list[0]?.id;
+
+          if (targetId) {
+            setActiveConversationId(targetId);
+            const detail = await assistantConversation.get(targetId, { signal: controller.signal });
+            if (controller.signal.aborted) return;
+            if (detail) {
+              setMessages(hydrateStoredMessages(detail.messages));
+            } else if (initialMessages.length === 0) {
+              setMessages([]);
+            }
+          } else {
+            setActiveConversationId(undefined);
+            if (initialMessages.length === 0) setMessages([]);
+          }
+          setHistoryStatus("idle");
+        } catch (error) {
+          if (controller.signal.aborted) return;
+          setHistoryStatus("error");
+          setMessages((previous) => [
+            ...previous,
+            {
+              id: `history-error-${Date.now()}`,
+              sender: "system",
+              content: error instanceof Error ? error.message : "Conversation history could not be loaded.",
+              createdAt: new Date().toISOString(),
+              error: { code: "STREAM_FAILED", message: "Conversation history could not be loaded.", retryable: true },
+            },
+          ]);
+        }
+      })();
+    } else if (assistantHistory) {
+      void assistantHistory
+        .loadLatest(projectId, { signal: controller.signal })
+        .then((history) => {
+          if (controller.signal.aborted) return;
+          if (!history) {
+            setActiveConversationId(undefined);
+            setConversations([]);
+            if (initialMessages.length === 0) setMessages([]);
+          } else {
+            setActiveConversationId(history.conversationId);
+            setConversations([
+              {
+                id: history.conversationId,
+                projectId,
+                title: "Current conversation",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ]);
+            setMessages(hydrateStoredMessages(history.messages));
+          }
+          setHistoryStatus("idle");
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+          setHistoryStatus("error");
+          setMessages((previous) => [
+            ...previous,
+            {
+              id: `history-error-${Date.now()}`,
+              sender: "system",
+              content: error instanceof Error ? error.message : "Conversation history could not be loaded.",
+              createdAt: new Date().toISOString(),
+              error: { code: "STREAM_FAILED", message: "Conversation history could not be loaded.", retryable: true },
+            },
+          ]);
+        });
+    }
+
     return () => controller.abort();
-  }, [assistantHistory, enabled, initialMessages.length, projectId]);
+  }, [assistantConversation, assistantHistory, enabled, projectId, hydrateStoredMessages]);
 
   useEffect(() => {
     setMessages((previous) => {
       let changed = false;
       const next = previous.map((message) => {
-      if (message.sender !== "assistant" || !message.proposals?.length) return message;
-      const applied = new Set(message.appliedProposals ?? []);
-      for (const proposal of message.proposals) {
-        if (confirmedActivities.some((entry) => entry.agentKind === "assistant" && entry.approvedByUser
-          && entry.sourceMessageId === message.id && entry.command === proposal.command && entry.status === "success")) {
-          applied.add(proposal.id);
+        if (message.sender !== "assistant" || !message.proposals?.length) return message;
+        const applied = new Set(message.appliedProposals ?? []);
+        for (const proposal of message.proposals) {
+          if (
+            confirmedActivities.some(
+              (entry) =>
+                entry.agentKind === "assistant" &&
+                entry.approvedByUser &&
+                entry.sourceMessageId === message.id &&
+                entry.command === proposal.command &&
+                entry.status === "success",
+            )
+          ) {
+            applied.add(proposal.id);
+          }
         }
-      }
-      if (applied.size === (message.appliedProposals?.size ?? 0)) return message;
-      changed = true;
-      return { ...message, appliedProposals: applied };
+        if (applied.size === (message.appliedProposals?.size ?? 0)) return message;
+        changed = true;
+        return { ...message, appliedProposals: applied };
       });
       return changed ? next : previous;
     });
   }, [confirmedActivities]);
 
-  const handleSendMessage = async (userText: string) => {
+  const handleSwitchConversation = async (newId: string) => {
+    if (isStreaming || isActionPending || newId === activeConversationId || !assistantConversation) return;
+    setIsActionPending(true);
+    setIsRenaming(false);
+    setActiveConversationId(newId);
+    setHistoryStatus("loading");
+    try {
+      const detail = await assistantConversation.get(newId);
+      if (detail) {
+        setMessages(hydrateStoredMessages(detail.messages));
+      } else {
+        setMessages([]);
+      }
+      setHistoryStatus("idle");
+    } catch (error) {
+      setHistoryStatus("error");
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: `conv-error-${Date.now()}`,
+          sender: "system",
+          content: error instanceof Error ? error.message : "Failed to load conversation.",
+          createdAt: new Date().toISOString(),
+          error: { code: "STREAM_FAILED", message: "Failed to load conversation.", retryable: true },
+        },
+      ]);
+    } finally {
+      setIsActionPending(false);
+    }
+  };
+
+  const handleNewConversation = async () => {
+    if (isStreaming || isActionPending || !enabled) return;
+    setIsActionPending(true);
+    setIsRenaming(false);
+    try {
+      if (assistantConversation) {
+        const created = await assistantConversation.create(projectId, "New conversation");
+        setConversations((prev) => [created, ...prev.filter((c) => c.id !== created.id)]);
+        setActiveConversationId(created.id);
+        setMessages([]);
+      } else {
+        setActiveConversationId(undefined);
+        setMessages([]);
+      }
+    } catch (error) {
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: `create-conv-error-${Date.now()}`,
+          sender: "system",
+          content: error instanceof Error ? error.message : "Failed to create new conversation.",
+          createdAt: new Date().toISOString(),
+          error: { code: "STREAM_FAILED", message: "Failed to create new conversation.", retryable: true },
+        },
+      ]);
+    } finally {
+      setIsActionPending(false);
+    }
+  };
+
+  const handleStartRename = () => {
+    if (isStreaming || isActionPending || !activeConversationId) return;
+    const current = conversations.find((c) => c.id === activeConversationId);
+    setRenameTitle(current?.title ?? "New conversation");
+    setIsRenaming(true);
+  };
+
+  const handleSaveRename = async () => {
+    if (isStreaming || isActionPending || !activeConversationId) return;
+    const cleanTitle = renameTitle.trim().slice(0, 120);
+    if (!cleanTitle) return;
+    setIsActionPending(true);
+    try {
+      if (assistantConversation) {
+        const updated = await assistantConversation.rename(activeConversationId, cleanTitle);
+        setConversations((prev) =>
+          prev.map((c) => (c.id === updated.id ? { ...c, title: updated.title, updatedAt: updated.updatedAt } : c)),
+        );
+      } else {
+        setConversations((prev) =>
+          prev.map((c) => (c.id === activeConversationId ? { ...c, title: cleanTitle } : c)),
+        );
+      }
+      setIsRenaming(false);
+    } catch (error) {
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: `rename-error-${Date.now()}`,
+          sender: "system",
+          content: error instanceof Error ? error.message : "Failed to rename conversation.",
+          createdAt: new Date().toISOString(),
+          error: { code: "STREAM_FAILED", message: "Failed to rename conversation.", retryable: true },
+        },
+      ]);
+    } finally {
+      setIsActionPending(false);
+    }
+  };
+
+  const handleCancelRename = () => {
+    setIsRenaming(false);
+    setRenameTitle("");
+  };
+
+  const handleDeleteConversation = async () => {
+    if (isStreaming || isActionPending || !activeConversationId) return;
+    setIsActionPending(true);
+    setIsRenaming(false);
+    const targetId = activeConversationId;
+    try {
+      if (assistantConversation) {
+        await assistantConversation.delete(targetId);
+      }
+      const remaining = conversations.filter((c) => c.id !== targetId);
+      setConversations(remaining);
+      if (remaining.length > 0) {
+        const nextId = remaining[0].id;
+        setActiveConversationId(nextId);
+        if (assistantConversation) {
+          setHistoryStatus("loading");
+          const detail = await assistantConversation.get(nextId);
+          setMessages(detail ? hydrateStoredMessages(detail.messages) : []);
+          setHistoryStatus("idle");
+        }
+      } else {
+        setActiveConversationId(undefined);
+        setMessages([]);
+      }
+    } catch (error) {
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: `delete-error-${Date.now()}`,
+          sender: "system",
+          content: error instanceof Error ? error.message : "Failed to delete conversation.",
+          createdAt: new Date().toISOString(),
+          error: { code: "STREAM_FAILED", message: "Failed to delete conversation.", retryable: true },
+        },
+      ]);
+    } finally {
+      setIsActionPending(false);
+    }
+  };
+
+  const handleSendMessage = async (userText: string, customRequestId?: string) => {
     const userMessageId = `user-msg-${Date.now()}-${messageCounterRef.current++}`;
     const assistantMessageId = `asst-msg-${Date.now()}-${messageCounterRef.current++}`;
     const now = new Date().toISOString();
@@ -151,8 +391,11 @@ export function AssistantChat({
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    // Retry with UUID or fresh UUID for each request
+    const requestId = customRequestId ?? generateUuid();
+
     const request: AssistantRequest = {
-      requestId: `req-${Date.now()}`,
+      requestId,
       projectId,
       ...(activeConversationId ? { conversationId: activeConversationId } : {}),
       message: userText,
@@ -165,7 +408,22 @@ export function AssistantChat({
       for await (const event of stream) {
         if (controller.signal.aborted) break;
         if (event.type === "done" || event.type === "error") terminalEventReceived = true;
-        if (event.type === "meta") setActiveConversationId(event.conversationId);
+        if (event.type === "meta") {
+          setActiveConversationId(event.conversationId);
+          setConversations((prev) => {
+            if (prev.some((c) => c.id === event.conversationId)) return prev;
+            return [
+              {
+                id: event.conversationId,
+                projectId,
+                title: "Current conversation",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+              ...prev,
+            ];
+          });
+        }
 
         setMessages((prev) => {
           return prev.map((msg) => {
@@ -235,10 +493,11 @@ export function AssistantChat({
   };
 
   const handleRetryLastMessage = () => {
-    // Find last user message
+    // Find last user message and retry with a freshly generated UUID
     const lastUserMsg = [...messages].reverse().find((m) => m.sender === "user");
     if (lastUserMsg) {
-      void handleSendMessage(lastUserMsg.content);
+      const retryUuid = generateUuid();
+      void handleSendMessage(lastUserMsg.content, retryUuid);
     }
   };
 
@@ -307,6 +566,100 @@ export function AssistantChat({
               Scientific reasoning & live scene proposals
             </span>
           </div>
+        </div>
+
+        <div className="bf-conversation-toolbar" role="toolbar" aria-label="Conversation controls">
+          {isRenaming ? (
+            <div className="bf-conversation-rename-box">
+              <input
+                type="text"
+                className="bf-conversation-rename-input"
+                value={renameTitle}
+                onChange={(e) => setRenameTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleSaveRename();
+                  if (e.key === "Escape") handleCancelRename();
+                }}
+                disabled={isStreaming || isActionPending}
+                maxLength={120}
+                aria-label="Rename conversation title"
+                autoFocus
+              />
+              <button
+                type="button"
+                className="bf-conversation-action-btn"
+                onClick={handleSaveRename}
+                disabled={isStreaming || isActionPending || !renameTitle.trim()}
+                title="Save title"
+                aria-label="Save conversation title"
+              >
+                <Check size={14} />
+              </button>
+              <button
+                type="button"
+                className="bf-conversation-action-btn"
+                onClick={handleCancelRename}
+                disabled={isStreaming || isActionPending}
+                title="Cancel"
+                aria-label="Cancel renaming"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <div className="bf-conversation-select-row">
+              <select
+                className="bf-conversation-select"
+                value={activeConversationId ?? ""}
+                onChange={(e) => void handleSwitchConversation(e.target.value)}
+                disabled={isStreaming || isActionPending || !enabled || conversations.length === 0}
+                aria-label="Select conversation"
+              >
+                {conversations.length === 0 ? (
+                  <option value="">No conversations</option>
+                ) : (
+                  conversations.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title}
+                    </option>
+                  ))
+                )}
+              </select>
+              <div className="bf-conversation-btn-group">
+                <button
+                  type="button"
+                  className="bf-conversation-action-btn"
+                  onClick={handleNewConversation}
+                  disabled={isStreaming || isActionPending || !enabled}
+                  title="New conversation"
+                  aria-label="New conversation"
+                >
+                  <Plus size={14} />
+                  <span>New</span>
+                </button>
+                <button
+                  type="button"
+                  className="bf-conversation-action-btn"
+                  onClick={handleStartRename}
+                  disabled={isStreaming || isActionPending || !enabled || !activeConversationId}
+                  title="Rename conversation"
+                  aria-label="Rename conversation"
+                >
+                  <Pencil size={13} />
+                </button>
+                <button
+                  type="button"
+                  className="bf-conversation-action-btn bf-btn-danger"
+                  onClick={handleDeleteConversation}
+                  disabled={isStreaming || isActionPending || !enabled || !activeConversationId}
+                  title="Delete conversation"
+                  aria-label="Delete conversation"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
