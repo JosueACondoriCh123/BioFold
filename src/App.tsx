@@ -29,6 +29,7 @@ function RecoveryGate({ auth, children }: { auth: AuthContextValue; children: Re
 
 function LaboratorySession({ active, projectDataPort }: { active: boolean; projectDataPort: ProjectDataPort | null }) {
   const [started, setStarted] = useState(false);
+  const [resolvedProjectId, setResolvedProjectId] = useState<string | undefined>(undefined);
   const location = useLocation();
   const search = new URLSearchParams(location.search);
   const requested = search.get("pdb");
@@ -36,14 +37,50 @@ function LaboratorySession({ active, projectDataPort }: { active: boolean; proje
   const validRequest = requested && /^[a-z0-9]{4}$/i.test(requested) ? requested.toUpperCase() : undefined;
   const validProject = requestedProject && /^[a-z0-9-]{1,128}$/i.test(requestedProject) ? requestedProject : undefined;
   const pdbId = validRequest ?? "1CRN";
+
   useEffect(() => { if (active) setStarted(true); }, [active]);
+
+  useEffect(() => {
+    if (!active || !projectDataPort) return;
+    if (validProject) {
+      setResolvedProjectId(validProject);
+      return;
+    }
+    let cancelled = false;
+    async function resolveDefaultProject() {
+      try {
+        const list = await projectDataPort!.listProjects();
+        if (cancelled) return;
+        if (list.ok && list.data.length > 0) {
+          setResolvedProjectId(list.data[0].id);
+        } else if (list.ok) {
+          const created = await projectDataPort!.createProject({
+            title: "Primary Research Workspace",
+            description: "Default molecular research workspace",
+          });
+          if (!cancelled && created.ok) {
+            setResolvedProjectId(created.data.id);
+          }
+        }
+      } catch {
+        /* graceful fallback */
+      }
+    }
+    void resolveDefaultProject();
+    return () => {
+      cancelled = true;
+    };
+  }, [active, projectDataPort, validProject]);
+
+  const activeProjectId = validProject ?? resolvedProjectId;
+
   if (!started) return null;
   return <div hidden={!active} inert={!active} aria-hidden={!active} data-testid="laboratory-session">
     <Suspense fallback={<IntegrationStatus title="Preparing the laboratory" message="Loading the 3D viewer…" />}>
       <Laboratory active={active} initialPdbId={pdbId}
-        projectId={validProject}
+        projectId={activeProjectId}
         projectDataPort={projectDataPort ?? undefined}
-        requestKey={active && (validRequest || validProject) ? `${location.key}:${validProject ?? "workspace"}:${pdbId}` : "initial"} />
+        requestKey={active && (validRequest || activeProjectId) ? `${location.key}:${activeProjectId ?? "workspace"}:${pdbId}` : "initial"} />
     </Suspense>
   </div>;
 }

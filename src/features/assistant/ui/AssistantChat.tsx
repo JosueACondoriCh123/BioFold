@@ -311,6 +311,8 @@ export function AssistantChat({
   };
 
   const handleSendMessage = async (userText: string, customRequestId?: string) => {
+    if (!enabled) return;
+
     const userMessageId = `user-msg-${Date.now()}-${messageCounterRef.current++}`;
     const assistantMessageId = `asst-msg-${Date.now()}-${messageCounterRef.current++}`;
     const now = new Date().toISOString();
@@ -638,6 +640,7 @@ export function AssistantChat({
               <button
                 type="button"
                 className="bf-prompt-chip"
+                disabled={!enabled || isStreaming}
                 onClick={() => handleSendMessage("Summarize this structure and focus chain A residue 10.")}
               >
                 “Summarize this structure and focus residue 10”
@@ -645,6 +648,7 @@ export function AssistantChat({
               <button
                 type="button"
                 className="bf-prompt-chip"
+                disabled={!enabled || isStreaming}
                 onClick={() => handleSendMessage("What are the key hydrophobic residues in this protein?")}
               >
                 “What are the key hydrophobic residues?”
@@ -652,6 +656,7 @@ export function AssistantChat({
               <button
                 type="button"
                 className="bf-prompt-chip"
+                disabled={!enabled || isStreaming}
                 onClick={() => handleSendMessage("Measure distance between A:1:CA and A:10:CA.")}
               >
                 “Measure distance from A:1:CA to A:10:CA”
