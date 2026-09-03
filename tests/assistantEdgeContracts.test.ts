@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { COMMAND_NAMES, parseCommandInput } from "../src/core/commandContracts";
 import { AUDITED_COMMANDS, parseEdgeAssistantRequest, parseModelAnswer, sse } from "../supabase/functions/_shared/assistantProtocol";
-import { requestOpenRouter } from "../supabase/functions/_shared/openRouter";
+import { OPENROUTER_RESPONSE_FORMAT, requestOpenRouter } from "../supabase/functions/_shared/openRouter";
 
 const samples = {
   load_structure: { pdbId: "4hhb" },
@@ -22,6 +22,24 @@ describe("Assistant Edge contracts", () => {
       const answer = parseModelAnswer({ answer: "A grounded answer.", proposals: [{ id: `p-${command}`, command, input: samples[command], rationale: "Useful scene action." }] });
       expect(answer.proposals[0].input).toEqual(expected);
     }
+    const proposalsSchema = OPENROUTER_RESPONSE_FORMAT.json_schema.schema.properties.proposals as {
+      items: { anyOf: Array<{ properties: { command: { const: string } } }> };
+    };
+    const schemaCommands = proposalsSchema.items.anyOf.map((variant) => variant.properties.command.const);
+    expect(schemaCommands).toEqual(COMMAND_NAMES);
+    const inspectStrictObjects = (value: unknown) => {
+      if (!value || typeof value !== "object") return;
+      const node = value as Record<string, unknown>;
+      if (node.type === "object") {
+        expect([...(node.required as string[])].sort()).toEqual(Object.keys(node.properties as object).sort());
+        expect(node.additionalProperties).toBe(false);
+      }
+      for (const child of Object.values(node)) {
+        if (Array.isArray(child)) child.forEach(inspectStrictObjects);
+        else inspectStrictObjects(child);
+      }
+    };
+    inspectStrictObjects(OPENROUTER_RESPONSE_FORMAT.json_schema.schema);
   });
 
   it("requires UUID project ownership inputs and strict request properties", () => {
@@ -38,18 +56,24 @@ describe("Assistant Edge contracts", () => {
   });
 
   it("validates OpenRouter structured output before returning proposals", async () => {
+    const content = JSON.stringify({ answer: "The surface is a visual overlay.", proposals: [{ id: "surface", command: "show_surface", input: { visible: true, opacity: 0.55 }, rationale: "Inspect the envelope." }] });
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       void input;
       void init;
-      return Response.json({
-      choices: [{ message: { content: JSON.stringify({ answer: "The surface is a visual overlay.", proposals: [{ id: "surface", command: "show_surface", input: { visible: true, opacity: 0.55 }, rationale: "Inspect the envelope." }] }) } }],
-      usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18, cost: 0.001 },
-      });
+      return new Response([
+        `data: ${JSON.stringify({ id: "provider-request", choices: [{ delta: { content } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18, cost: 0.001 } })}\n\n`,
+        "data: [DONE]\n\n",
+      ].join(""), { headers: { "Content-Type": "text/event-stream" } });
     });
     const result = await requestOpenRouter({ apiKey: "server-only", model: "test/model", prompt: "grounded", fetchImpl: fetchImpl as typeof fetch });
     expect(result.proposals[0]).toMatchObject({ command: "show_surface", input: { opacity: 0.55 } });
     expect(result.usage).toEqual({ promptTokens: 10, completionTokens: 8, totalTokens: 18, costUsd: 0.001 });
+    expect(result.providerRequestId).toBe("provider-request");
     const headers = fetchImpl.mock.calls[0]![1]?.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer server-only");
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]![1]?.body));
+    expect(body).toMatchObject({ stream: true, usage: { include: true }, max_completion_tokens: 1200, provider: { require_parameters: true } });
+    expect(body).not.toHaveProperty("temperature");
   });
 });

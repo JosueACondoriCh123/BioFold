@@ -1,96 +1,49 @@
-# BioFold 3D — contexto maestro para continuar en una nueva sesión
+# BioFold 3D — contexto maestro
 
-Última actualización: 2 de septiembre de 2026. Este archivo describe el estado real del repositorio y las decisiones vigentes. El documento Word original de la hackathon es contexto de producto, no autoridad técnica.
+Última actualización: 2 de septiembre de 2026. Este archivo describe el estado verificable del repositorio. El documento Word de la hackathon es contexto de producto, no autoridad técnica.
 
-## 1. Objetivo del producto
+## 1. Objetivo y alcance
 
-BioFold 3D es una SPA científica donde una persona y agentes WebMCP exploran la misma escena molecular. El producto diferencia de forma visible:
+BioFold 3D es una SPA científica donde una persona y agentes WebMCP exploran la misma escena molecular. Toda afirmación debe distinguir evidencia `observed`, `calculated`, `heuristic` o `unavailable`.
 
-- **observed**: datos leídos de la estructura;
-- **calculated**: geometría o estado derivados de forma determinista;
-- **heuristic**: contexto cualitativo, especialmente mutaciones;
-- **unavailable**: evidencia que no se pudo obtener.
+No entran docking, ΔΔG, dinámica molecular, predicción de estabilidad, diagnóstico o patogenicidad clínica ni modificación real de coordenadas.
 
-No se deben prometer docking, ΔΔG, dinámica molecular, predicción de estabilidad, diagnóstico clínico ni mutación real de coordenadas.
+## 2. Estado Git y coordinación
 
-## 2. Arquitectura vigente
+- Rama de integración local: `codex/phase2-3-mvp`.
+- Base de 2.3: `b71afa5` (`codex/phase2-assistant-core`).
+- Se integraron dos entregas externas separadas: Assistant/UI y DB/Edge. La integración corrigió sus contratos antes del QA final.
+- No se hizo push, deploy ni mutación del Supabase/Vercel remoto.
+- El propietario conserva el control de GitHub, Supabase Branching, secretos, Vercel y producción.
+- `.env.local` y secretos locales siguen ignorados. Nunca copiar `service_role`, `sb_secret_*`, Google u OpenRouter a variables `VITE_*`.
+
+La migración 2.2 contenía un operador pgvector sin calificar que impedía recrear una base vacía con `search_path=''`. Se aplicó la corrección mecánica `OPERATOR(extensions.<=>)` en `20260901225652_phase2_assistant_rag.sql`; no cambia tablas ni datos. Todo el esquema funcional 2.3 está en la migración nueva `20260902233000_phase2_3_db_controls.sql`.
+
+## 3. Arquitectura 2.3
 
 ```text
-React/Vite UI ─┬─ AuthProvider ── Supabase Auth
-               ├─ ProjectDataPort ── SupabaseProjectDataAdapter ── PostgreSQL/RLS
-               ├─ Command Bus ── Zustand ── Activity Log
-               │                    ├─ ViewerPort ── 3Dmol/WebGL
-               │                    └─ GeometryPort ── Web Worker
-               └─ AssistantClient ── biofold-chat Edge Function
-                                      ├─ sesión + propiedad por RLS
-                                      ├─ snapshot + historial
-                                      ├─ RCSB/UniProt + caché 7 días
-                                      ├─ pgvector + búsqueda textual/RRF
-                                      └─ OpenRouter (secreto sólo servidor)
+React/Vite UI
+  ├─ Supabase Auth: email, Google PKCE, confirmación y recuperación
+  ├─ ProjectDataPort: proyectos privados + snapshots + audit trail
+  ├─ Command Bus: ocho comandos compartidos por UI/WebMCP
+  └─ AssistantClient: SSE tipado
+       └─ biofold-chat
+            ├─ sesión y ownership explícitos
+            ├─ claim/finalize atómicos por service_role
+            ├─ conversaciones y mensajes persistentes
+            ├─ RAG pgvector 384D + full-text
+            ├─ caché independiente RCSB/UniProt + telemetría
+            └─ OpenRouter openai/gpt-5-mini, JSON Schema y streaming real
+
+biofold-ingest-knowledge
+  └─ bearer BIOFOLD_INGEST_TOKEN → gte-small → reemplazo transaccional por fuente
 ```
 
-La UI y WebMCP ejecutan los mismos comandos. 3Dmol, workers, tokens y AbortSignals no se guardan en Zustand ni en snapshots. La landing carga de forma diferida el laboratorio, por lo que no inicia WebGL, workers ni WebMCP.
+3Dmol, workers, AbortSignals, sesiones y secretos no se guardan en Zustand ni en `WorkspaceSnapshotV1`. La landing sigue cargando el laboratorio de forma diferida.
 
-## 3. Estado de Git y servicios
+## 4. Contratos invariables
 
-- Repositorio: `https://github.com/JosueACondoriCh123/BioFold.git`.
-- Rama de trabajo actual: `codex/phase2-assistant-core`.
-- Commit base de esta fase: `eefcf2b`.
-- Rama/base integrada anterior: `a35d704` (`fix: harden and integrate phase 2 contributions`).
-- El usuario publica GitHub/Vercel; Codex no debe hacer push ni deploy sin una petición explícita.
-- Proyecto Supabase real: Biofold, ref `wkrpwardtbeluwzutjyp`.
-- `.env.local` contiene configuración pública real y está ignorado. No modificarlo, imprimirlo ni copiarlo a pruebas.
-- Nunca poner `service_role`, `sb_secret_*`, secretos de Google u OpenRouter en `VITE_*`.
-
-## 4. Fases realizadas
-
-### MVP y plataforma — completado
-
-- Viewer 3D con fixtures locales `1CRN`/`4HHB` y gateway RCSB.
-- Representation, Spectrum, surface con loading/error/cancelación, distance y activity log.
-- Ocho herramientas WebMCP auditadas, registradas sólo con sesión/ruta/viewer válidos.
-- Landing, rutas públicas/privadas, login, signup, Google PKCE, confirmación, recuperación, cuenta y logout mediante Supabase Auth.
-- Diseño oscuro suave, responsive y accesible.
-
-### Fase 2.0/2.1 — completado en código
-
-- `WorkspaceSnapshotV1`, persistencia optimista por revisión y restauración de cámara/escena/resultados.
-- Proyectos privados, eventos, conversaciones, mensajes, consumo IA, metadata estructural y corpus vectorial.
-- RLS por propietario, privilegios explícitos, índices de claves foráneas y actividad append-only.
-- Lista/detalle/CRUD de proyectos, estados Saving/Saved/Offline/Conflict y pestañas Results/Assistant.
-
-### Fase 2.2 — implementado en esta rama
-
-El vertical slice ahora es:
-
-1. abrir un proyecto guardado;
-2. preguntar al Assistant;
-3. verificar sesión y propiedad del proyecto;
-4. recuperar snapshot, historial, RCSB/UniProt y corpus local;
-5. llamar OpenRouter con structured output;
-6. validar hasta tres propuestas contra los ocho contratos;
-7. persistir pregunta, respuesta, citas y consumo;
-8. mostrar SSE tipado;
-9. ejecutar una propuesta sólo después de **Apply**;
-10. guardar `Assistant · confirmed` en actividad;
-11. restaurar conversación y estado Applied después de recargar.
-
-Archivos principales de 2.2:
-
-- `src/assistant/assistantClient.ts`: transporte SSE autenticado.
-- `src/assistant/assistantService.ts`: composición producción/mock sin exponer proveedor.
-- `src/assistant/assistantHistory.ts`: historial read-only bajo RLS.
-- `src/types/assistant.ts`: contratos públicos.
-- `src/features/assistant/ui/AssistantChat.tsx`: hidratación, cancelación y propuestas confirmadas.
-- `supabase/functions/biofold-chat/index.ts`: autorización, RAG, persistencia, rate limit e idempotencia.
-- `supabase/functions/_shared/assistantProtocol.ts`: validación estricta del servidor.
-- `supabase/functions/_shared/openRouter.ts`: OpenRouter server-only con JSON Schema.
-- `supabase/migrations/20260901225652_phase2_assistant_rag.sql`: request IDs, FTS, RRF y privilegios.
-- `supabase/seed.sql`: cuatro chunks científicos BioFold con procedencia/checksum.
-
-## 5. Contratos que no deben romperse
-
-Las ocho acciones son:
+Los ocho comandos siguen siendo:
 
 1. `load_structure`
 2. `get_structure_summary`
@@ -101,90 +54,96 @@ Las ocho acciones son:
 7. `preview_mutation_context`
 8. `reset_workspace`
 
-`COMMAND_NAMES` y `parseCommandInput` en `src/core/commandContracts.ts` son la autoridad cliente. La prueba `tests/assistantEdgeContracts.test.ts` obliga al catálogo del Edge a permanecer idéntico. Una propuesta nunca ejecuta el Command Bus automáticamente.
+`COMMAND_NAMES`, `parseCommandInput`, `CommandResult` y `WorkspaceSnapshotV1` no cambiaron. Las propuestas permanecen inertes hasta pulsar **Apply** y el audit trail exige `approvedByUser: true`.
 
-`CommandResult<T>` mantiene `ok`, `data/error`, `evidence`, `provenance` y `activityId`. `WorkspaceSnapshotV1` almacena sólo estado confirmado y serializable.
+## 5. Assistant 2.3 implementado
 
-## 6. Seguridad de Assistant
+- Modelo fijo `openai/gpt-5-mini`, `stream:true`, `response_format.json_schema.strict:true`, `provider.require_parameters:true` y máximo 1.200 tokens de salida; no se envía `temperature`.
+- El parser SSE tolera fragmentación de bytes, CRLF dividido, heartbeats, errores, `[DONE]`, usage opcional e ID del proveedor.
+- Un tokenizer incremental emite sólo caracteres decodificados de la propiedad raíz `answer`, incluidos escapes y pares sustitutos Unicode.
+- El documento JSON completo y las propuestas se validan contra los ocho contratos antes de persistir o emitir citas/propuestas.
+- Orden público: `meta` → `delta*` → persistencia validada → `citations` → `proposals` → `usage` opcional → `done`.
+- Un parcial cancelado o fallido queda sólo en UI como `Interrupted / unverified`; no se persiste y no conserva propuestas. Retry reutiliza el prompt exacto con un UUID nuevo.
+- Los replays completados son streams sintéticos inmediatos. IDs activos, fallidos, cancelados o expirados devuelven conflicto.
+- `BUDGET_EXCEEDED` informa únicamente que el límite gratuito diario se reinicia a las 00:00 UTC; no existe pago, upgrade ni cuota por proyecto.
 
-- `supabase/config.toml` mantiene `verify_jwt = false` porque se usa una publishable key moderna; esto sólo es seguro mientras `biofold-chat` valide explícitamente el bearer mediante `auth.getUser(token)` y compruebe propiedad con un cliente user-scoped/RLS.
-- El cliente service role se crea únicamente dentro de la Edge Function y sólo después de validar la sesión.
-- `ai_requests` usa unicidad `(user_id, request_id)`; mensajes usan `(conversation_id, request_id, sender)` para replay sin duplicados.
-- Límite actual: 6 solicitudes por usuario en una ventana de 60 segundos.
-- Citas externas se construyen desde filas recuperadas o respuestas oficiales de RCSB/UniProt; el modelo no elige URLs.
-- La búsqueda híbrida `hybrid_search_knowledge` es `SECURITY INVOKER` y ejecutable sólo por `service_role`.
-- La función intenta embeddings nativos `gte-small` (384 dimensiones) y degrada a full-text si no están disponibles.
-- OpenRouter se llama con `stream: false` para validar toda la respuesta estructurada antes de exponer propuestas. Después, el servidor divide la respuesta validada en eventos SSE. Es streaming de transporte, no token streaming del proveedor.
+## 6. Consumo, seguridad y RLS
 
-## 7. Configuración necesaria para activar 2.2
+- `claim_assistant_request` y `finalize_assistant_request` son `SECURITY INVOKER`, `search_path=''` y ejecutables sólo por `service_role`.
+- El claim usa advisory lock por usuario, comprueba owner de proyecto/conversación, expira reservas a los cinco minutos y admite exactamente seis solicitudes nuevas por ventana móvil de 60 segundos.
+- La cuota es USD 1 por usuario y día UTC. Cada claim reserva USD 0,05.
+- Si el proveedor no fue llamado se libera la reserva; si fue llamado pero falta usage se cobra USD 0,05; un costo real mayor se conserva y bloquea claims posteriores.
+- La conversación y la pregunta se crean dentro del claim sólo después de la admisión. El primer título usa hasta 80 caracteres.
+- La finalización válida inserta la respuesta y reconcilia consumo en una transacción.
+- El navegador tiene CRUD sólo sobre conversaciones propias y lectura de mensajes propios. No puede escribir mensajes ni leer `ai_requests`, corpus, ingestión, caché o métricas.
+- Borrar una conversación elimina mensajes por cascada, conserva `ai_requests` con `conversation_id = null` y no borra el audit trail del proyecto.
 
-Frontend (Vercel, públicas):
+## 7. Conversaciones
 
-```text
-VITE_SUPABASE_URL
-VITE_SUPABASE_PUBLISHABLE_KEY
-```
+`AssistantConversationPort` expone `list`, `load`, `rename` y `delete`.
 
-Edge Function (Supabase secrets, nunca Vercel/Vite):
+- Lista como máximo 50 conversaciones por `updated_at DESC`.
+- Carga los últimos 100 mensajes en descendente y los invierte en memoria.
+- **New** abre un borrador local; no crea filas vacías.
+- Rename normaliza títulos de 1–120 caracteres.
+- Delete requiere confirmación y selecciona la conversación restante más reciente o un borrador vacío.
+- Switch/New/Rename/Delete quedan bloqueados durante streaming hasta Stop.
+- AbortController más una generación impiden que cargas antiguas sobrescriban la selección vigente.
+- El estado Applied se restaura por `sourceMessageId`, comando, confirmación y resultado exitoso.
+
+## 8. Corpus, caché y evaluación
+
+- `knowledge/manifest.json` schema v2 fija normalización NFC/LF, chunking por encabezado/párrafo, límites 1.200 caracteres/180 palabras, `gte-small`, 384 dimensiones y checksums.
+- `knowledge:build` regenera payload y seed; `knowledge:check` compara sin escribir; `knowledge:ingest` llama al endpoint administrativo.
+- La ingestión es POST-only, sin CORS y con bearer `BIOFOLD_INGEST_TOKEN`. Verifica hashes, vectores normalizados 384D y reemplaza cada fuente transaccionalmente.
+- Una fuente idéntica con embeddings completos queda `skipped`.
+- La búsqueda semántica descarta distancia coseno mayor a 0,35; full-text sigue disponible sin embedding o vecino aceptable.
+- RCSB y UniProt usan entradas separadas por proveedor/clave: éxito fresco siete días, stale hasta treinta, 404 una hora y revalidación ETag/Last-Modified.
+- La telemetría server-only registra `hit`, `miss`, `revalidated`, `stale_fallback` o `unavailable`, HTTP status y latencia.
+- `evals/assistant/golden.json` contiene 16 casos: ocho de evidencia, cuatro de 1CRN/4HHB/fuentes y cuatro abstenciones obligatorias.
+- El runner usa conversación y UUID nuevos, espacia todas las solicitudes al menos 10,5 s y permite una sola repetición transitoria. Gates: citas 100%, recall ≥90%, abstención 100%, propuestas válidas 100%, autoejecución 0, TTFT p95 <8 s y total p95 <30 s.
+
+## 9. Configuración server-only
 
 ```text
 OPENROUTER_API_KEY
-OPENROUTER_MODEL
 OPENROUTER_SITE_URL
 BIOFOLD_ALLOWED_ORIGINS
+BIOFOLD_USER_DAILY_BUDGET_USD=1.00
+BIOFOLD_REQUEST_RESERVE_USD=0.05
+BIOFOLD_INGEST_TOKEN
 SUPABASE_PUBLISHABLE_KEY
 ```
 
-`SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` los ofrece el runtime hospedado de Supabase. El modelo de OpenRouter debe soportar structured outputs. Para local, copiar `supabase/functions/.env.example` a `supabase/functions/.env.local`, que está ignorado.
+El runtime provee `SUPABASE_URL` y `SUPABASE_SECRET_KEY`/`SUPABASE_SERVICE_ROLE_KEY`. El modelo no es configurable. Frontend sólo usa `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY`.
 
-No se aplicaron migraciones, seeds, secretos ni funciones al Supabase real. Eso requiere autorización del usuario y primero debe probarse en una rama/entorno no productivo.
+## 10. Evidencia local de QA
 
-## 8. Evidencia de QA al cerrar esta sesión
+- ESLint: 0 errores; la advertencia de dependencias de hook detectada durante integración fue corregida.
+- TypeScript estricto: aprobado.
+- Vitest: **323/323**, 40 archivos.
+- Build de producción: aprobado.
+- Playwright: **53/53**, 0 fallos.
+- Supabase CLI 2.116.0 + Docker 29.4.3: `db reset` aprobado desde base vacía.
+- pgTAP: **43/43**.
+- Carrera real de siete conexiones: **6 admitidas, 1 rate-limited**.
+- `supabase db lint --local --schema public --level warning --fail-on warning`: sin hallazgos.
+- Ambas Edge Functions compilan y arrancan en `supabase-edge-runtime` compatible con Deno 2.1.4.
+- Ingestión local real: 6 chunks, todos 384D; segunda corrida idéntica: ambas fuentes `skipped`.
+- `knowledge:check`: reproducible.
 
-- `pnpm lint`: aprobado.
-- `pnpm typecheck`: aprobado.
-- Suite unitaria final: **288/288** aprobadas.
-- Checks focalizados de 2.2: **23/23** aprobados.
-- `pnpm build`: aprobado; `dist/index.html` regenerado el 2 de septiembre de 2026.
-- Suite Playwright completa antes del último ajuste de restauración: **53/53**, 0 flaky, 0 skipped.
-- E2E focalizado posterior al último ajuste: **1/1**, cubre persistencia, citas, Apply y restauración de estado Applied.
-- `pnpm supabase:test`: bloqueado, `ECONNREFUSED 127.0.0.1:54322`; Docker/Supabase local no estaba iniciado. Las pruebas estáticas SQL aprobaron, pero no sustituyen pgTAP real.
+Warnings conocidos: 3Dmol contiene `eval`; el chunk lazy del laboratorio supera 500 kB. La primera inferencia local del corpus activó el soft limit del isolate después de responder correctamente; staging debe confirmar el margen del entorno hospedado.
 
-Warnings conocidos y aceptados por ahora:
+## 11. Gates remotos pendientes
 
-- 3Dmol distribuye un bundle que usa `eval`; Vite lo advierte durante el build.
-- El chunk del laboratorio supera 500 kB, pero permanece lazy y no contamina la landing pública.
+Requieren autorización y credenciales del propietario:
 
-## 9. Gate obligatorio antes de producción
+1. Crear la rama Supabase `phase2-3-mvp`, aplicar migraciones, secretos y funciones.
+2. Ejecutar Security Advisor y Performance Advisor hospedados y corregir hallazgos críticos.
+3. Ingerir el corpus y ejecutar `eval:assistant` con crédito OpenRouter.
+4. Conectar un preview Vercel, SMTP, Google OAuth, redirects y orígenes exactos.
+5. Ejecutar aislamiento con dos usuarios reales y el recorrido proyecto → Assistant → citas → Apply → reload → cambio de conversación.
+6. Tras aprobación explícita: backup lógico/restorable, `db push --dry-run`, producción sin seed, funciones, corpus, frontend y smoke de Auth/Assistant/ocho herramientas.
+7. Sólo después de todos los gates: actualizar resultados públicos, demo/submission y crear la etiqueta `v0.1.0-mvp`.
 
-1. Iniciar Docker Desktop (motor Linux).
-2. Ejecutar `pnpm supabase:start`.
-3. Ejecutar `pnpm supabase:reset` y `pnpm supabase:test` desde base vacía.
-4. Verificar aislamiento usuario A/usuario B/anónimo y privilegio server-only del RPC.
-5. Probar `biofold-chat` localmente con `pnpm supabase:functions` y un límite OpenRouter desechable.
-6. Probar cancelación, replay del mismo `requestId`, 429 y modelo no disponible.
-7. Aplicar migraciones primero a una rama Supabase no productiva.
-8. Ejecutar Security Advisor y Performance Advisor.
-9. Sólo con aprobación: migrar/seedear Biofold real, configurar secretos y desplegar `biofold-chat`.
-10. Validar en la URL Vercel el flujo completo y las ocho site tools WebMCP.
-
-## 10. Próxima fase sugerida (2.3)
-
-- Ingestión reproducible que calcule embeddings del manifiesto en lugar de depender sólo de los chunks seed.
-- Evaluación RAG con preguntas doradas, precisión de citas y pruebas de abstención.
-- Conversaciones múltiples: crear, renombrar, cambiar y borrar con confirmación.
-- Rate limiting atómico mediante RPC/contador transaccional si aumenta el tráfico.
-- True provider streaming sólo si se diseña una forma segura de no exponer propuestas parciales sin validar.
-- Mejor caché/observabilidad para RCSB y UniProt, con métricas de hit, latencia y fallo.
-- Presupuesto por usuario/proyecto, sin mostrar ni persistir secretos.
-
-## 11. Secuencia recomendada para una sesión nueva
-
-1. Leer este archivo y `docs/PHASE2_DEVELOPMENT.md`.
-2. Ejecutar `git status --short` y confirmar la rama `codex/phase2-assistant-core`.
-3. No descartar cambios del usuario ni tocar `.env.local`.
-4. Revisar el diff y ejecutar `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`.
-5. Si Docker está disponible, cerrar el gate SQL pendiente.
-6. No desplegar ni aplicar cambios remotos sin autorización explícita.
-
-Fuentes técnicas de referencia: documentación oficial de [Supabase Edge Functions](https://supabase.com/docs/guides/functions), [autorización en Edge Functions](https://supabase.com/docs/guides/functions/auth-headers), [hybrid search](https://supabase.com/docs/guides/ai/hybrid-search), [RCSB Data API](https://data.rcsb.org/), [UniProt REST API](https://www.uniprot.org/help/api) y [OpenRouter structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs).
+Rollback previsto: deployment anterior de Vercel y Edge Functions. La migración 2.3 no elimina columnas existentes; restaurar la base sólo ante corrupción o fallo no recuperable.

@@ -4,7 +4,6 @@ import type {
   AssistantClient,
   AssistantConversationPort,
   AssistantConversationSummary,
-  AssistantHistoryPort,
   AssistantRequest,
   CommandProposal,
   PersistedAssistantMessage,
@@ -17,8 +16,7 @@ import { ChatInputArea } from "./ChatInputArea";
 
 export interface AssistantChatProps {
   assistantClient: AssistantClient;
-  assistantHistory?: AssistantHistoryPort;
-  assistantConversation?: AssistantConversationPort;
+  assistantConversations?: AssistantConversationPort;
   enabled?: boolean;
   projectId: string;
   conversationId?: string;
@@ -31,8 +29,7 @@ const EMPTY_ACTIVITY: ActivityEntry[] = [];
 
 export function AssistantChat({
   assistantClient,
-  assistantHistory,
-  assistantConversation,
+  assistantConversations,
   enabled = true,
   projectId,
   conversationId,
@@ -50,6 +47,11 @@ export function AssistantChat({
   const [renameTitle, setRenameTitle] = useState("");
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const conversationLoadRef = useRef<AbortController | null>(null);
+  const conversationGenerationRef = useRef(0);
+  const activeConversationIdRef = useRef(activeConversationId);
+  const initialMessagesRef = useRef(initialMessages);
+  activeConversationIdRef.current = activeConversationId;
   const confirmedActivitiesRef = useRef(confirmedActivities);
   confirmedActivitiesRef.current = confirmedActivities;
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
@@ -70,6 +72,7 @@ export function AssistantChat({
   useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
+      conversationLoadRef.current?.abort();
     };
   }, []);
 
@@ -102,94 +105,49 @@ export function AssistantChat({
     });
   }, []);
 
-  // Conversation and history hydration
+  // Conversation hydration. Generation + AbortController prevent stale loads
+  // from replacing a newer user selection.
   useEffect(() => {
-    if ((!assistantConversation && !assistantHistory) || !enabled) return;
+    if (!assistantConversations || !enabled) return;
+    conversationLoadRef.current?.abort();
     const controller = new AbortController();
+    conversationLoadRef.current = controller;
+    const generation = ++conversationGenerationRef.current;
     setHistoryStatus("loading");
 
-    if (assistantConversation) {
-      void (async () => {
-        try {
-          const list = await assistantConversation.list(projectId, { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          setConversations(list);
-
-          const targetId = activeConversationId && list.some((c: AssistantConversationSummary) => c.id === activeConversationId)
-            ? activeConversationId
-            : list[0]?.id;
-
-          if (targetId) {
-            setActiveConversationId(targetId);
-            const detail = await assistantConversation.get(targetId, { signal: controller.signal });
-            if (controller.signal.aborted) return;
-            if (detail) {
-              setMessages(hydrateStoredMessages(detail.messages));
-            } else if (initialMessages.length === 0) {
-              setMessages([]);
-            }
-          } else {
-            setActiveConversationId(undefined);
-            if (initialMessages.length === 0) setMessages([]);
-          }
-          setHistoryStatus("idle");
-        } catch (error) {
-          if (controller.signal.aborted) return;
-          setHistoryStatus("error");
-          setMessages((previous) => [
-            ...previous,
-            {
-              id: `history-error-${Date.now()}`,
-              sender: "system",
-              content: error instanceof Error ? error.message : "Conversation history could not be loaded.",
-              createdAt: new Date().toISOString(),
-              error: { code: "STREAM_FAILED", message: "Conversation history could not be loaded.", retryable: true },
-            },
-          ]);
+    void (async () => {
+      try {
+        const list = await assistantConversations.list(projectId, { signal: controller.signal });
+        if (controller.signal.aborted || generation !== conversationGenerationRef.current) return;
+        setConversations(list);
+        const selectedId = activeConversationIdRef.current;
+        const targetId = selectedId && list.some((conversation) => conversation.id === selectedId)
+          ? selectedId
+          : list[0]?.id;
+        if (targetId) {
+          const detail = await assistantConversations.load(projectId, targetId, { signal: controller.signal });
+          if (controller.signal.aborted || generation !== conversationGenerationRef.current) return;
+          setActiveConversationId(targetId);
+          if (detail) setMessages(hydrateStoredMessages(detail.messages));
+        } else {
+          setActiveConversationId(undefined);
+          if (initialMessagesRef.current.length === 0) setMessages([]);
         }
-      })();
-    } else if (assistantHistory) {
-      void assistantHistory
-        .loadLatest(projectId, { signal: controller.signal })
-        .then((history) => {
-          if (controller.signal.aborted) return;
-          if (!history) {
-            setActiveConversationId(undefined);
-            setConversations([]);
-            if (initialMessages.length === 0) setMessages([]);
-          } else {
-            setActiveConversationId(history.conversationId);
-            setConversations([
-              {
-                id: history.conversationId,
-                projectId,
-                title: "Current conversation",
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              },
-            ]);
-            setMessages(hydrateStoredMessages(history.messages));
-          }
-          setHistoryStatus("idle");
-        })
-        .catch((error) => {
-          if (controller.signal.aborted) return;
-          setHistoryStatus("error");
-          setMessages((previous) => [
-            ...previous,
-            {
-              id: `history-error-${Date.now()}`,
-              sender: "system",
-              content: error instanceof Error ? error.message : "Conversation history could not be loaded.",
-              createdAt: new Date().toISOString(),
-              error: { code: "STREAM_FAILED", message: "Conversation history could not be loaded.", retryable: true },
-            },
-          ]);
-        });
-    }
+        setHistoryStatus("idle");
+      } catch (error) {
+        if (controller.signal.aborted || generation !== conversationGenerationRef.current) return;
+        setHistoryStatus("error");
+        setMessages((previous) => [...previous, {
+          id: `history-error-${Date.now()}`, sender: "system",
+          content: error instanceof Error ? error.message : "Conversation history could not be loaded.",
+          createdAt: new Date().toISOString(),
+          error: { code: "STREAM_FAILED", message: "Conversation history could not be loaded.", retryable: true },
+        }]);
+      }
+    })();
 
     return () => controller.abort();
-  }, [assistantConversation, assistantHistory, enabled, projectId, hydrateStoredMessages]);
+  }, [assistantConversations, enabled, projectId, hydrateStoredMessages]);
 
   useEffect(() => {
     setMessages((previous) => {
@@ -220,13 +178,18 @@ export function AssistantChat({
   }, [confirmedActivities]);
 
   const handleSwitchConversation = async (newId: string) => {
-    if (isStreaming || isActionPending || newId === activeConversationId || !assistantConversation) return;
+    if (isStreaming || isActionPending || newId === activeConversationId || !assistantConversations) return;
+    conversationLoadRef.current?.abort();
+    const controller = new AbortController();
+    conversationLoadRef.current = controller;
+    const generation = ++conversationGenerationRef.current;
     setIsActionPending(true);
     setIsRenaming(false);
     setActiveConversationId(newId);
     setHistoryStatus("loading");
     try {
-      const detail = await assistantConversation.get(newId);
+      const detail = await assistantConversations.load(projectId, newId, { signal: controller.signal });
+      if (controller.signal.aborted || generation !== conversationGenerationRef.current) return;
       if (detail) {
         setMessages(hydrateStoredMessages(detail.messages));
       } else {
@@ -234,6 +197,7 @@ export function AssistantChat({
       }
       setHistoryStatus("idle");
     } catch (error) {
+      if (controller.signal.aborted || generation !== conversationGenerationRef.current) return;
       setHistoryStatus("error");
       setMessages((previous) => [
         ...previous,
@@ -252,32 +216,12 @@ export function AssistantChat({
 
   const handleNewConversation = async () => {
     if (isStreaming || isActionPending || !enabled) return;
-    setIsActionPending(true);
+    conversationLoadRef.current?.abort();
+    ++conversationGenerationRef.current;
     setIsRenaming(false);
-    try {
-      if (assistantConversation) {
-        const created = await assistantConversation.create(projectId, "New conversation");
-        setConversations((prev) => [created, ...prev.filter((c) => c.id !== created.id)]);
-        setActiveConversationId(created.id);
-        setMessages([]);
-      } else {
-        setActiveConversationId(undefined);
-        setMessages([]);
-      }
-    } catch (error) {
-      setMessages((previous) => [
-        ...previous,
-        {
-          id: `create-conv-error-${Date.now()}`,
-          sender: "system",
-          content: error instanceof Error ? error.message : "Failed to create new conversation.",
-          createdAt: new Date().toISOString(),
-          error: { code: "STREAM_FAILED", message: "Failed to create new conversation.", retryable: true },
-        },
-      ]);
-    } finally {
-      setIsActionPending(false);
-    }
+    setActiveConversationId(undefined);
+    setMessages([]);
+    setHistoryStatus("idle");
   };
 
   const handleStartRename = () => {
@@ -289,12 +233,12 @@ export function AssistantChat({
 
   const handleSaveRename = async () => {
     if (isStreaming || isActionPending || !activeConversationId) return;
-    const cleanTitle = renameTitle.trim().slice(0, 120);
+    const cleanTitle = renameTitle.trim().replace(/\s+/g, " ").slice(0, 120);
     if (!cleanTitle) return;
     setIsActionPending(true);
     try {
-      if (assistantConversation) {
-        const updated = await assistantConversation.rename(activeConversationId, cleanTitle);
+      if (assistantConversations) {
+        const updated = await assistantConversations.rename(projectId, activeConversationId, cleanTitle);
         setConversations((prev) =>
           prev.map((c) => (c.id === updated.id ? { ...c, title: updated.title, updatedAt: updated.updatedAt } : c)),
         );
@@ -327,21 +271,22 @@ export function AssistantChat({
 
   const handleDeleteConversation = async () => {
     if (isStreaming || isActionPending || !activeConversationId) return;
+    if (typeof window !== "undefined" && !window.confirm("Delete this conversation and all of its messages?")) return;
     setIsActionPending(true);
     setIsRenaming(false);
     const targetId = activeConversationId;
     try {
-      if (assistantConversation) {
-        await assistantConversation.delete(targetId);
+      if (assistantConversations) {
+        await assistantConversations.delete(projectId, targetId);
       }
       const remaining = conversations.filter((c) => c.id !== targetId);
       setConversations(remaining);
       if (remaining.length > 0) {
         const nextId = remaining[0].id;
         setActiveConversationId(nextId);
-        if (assistantConversation) {
+        if (assistantConversations) {
           setHistoryStatus("loading");
-          const detail = await assistantConversation.get(nextId);
+          const detail = await assistantConversations.load(projectId, nextId);
           setMessages(detail ? hydrateStoredMessages(detail.messages) : []);
           setHistoryStatus("idle");
         }
@@ -369,6 +314,8 @@ export function AssistantChat({
     const userMessageId = `user-msg-${Date.now()}-${messageCounterRef.current++}`;
     const assistantMessageId = `asst-msg-${Date.now()}-${messageCounterRef.current++}`;
     const now = new Date().toISOString();
+    const wasDraft = !activeConversationId;
+    const draftTitle = userText.trim().replace(/\s+/g, " ").slice(0, 80) || "Assistant conversation";
 
     const userMessage: UiChatMessage = {
       id: userMessageId,
@@ -382,6 +329,7 @@ export function AssistantChat({
       sender: "assistant",
       content: "",
       isStreaming: true,
+      retryPrompt: userText,
       createdAt: now,
     };
 
@@ -411,12 +359,15 @@ export function AssistantChat({
         if (event.type === "meta") {
           setActiveConversationId(event.conversationId);
           setConversations((prev) => {
-            if (prev.some((c) => c.id === event.conversationId)) return prev;
+            const existing = prev.find((conversation) => conversation.id === event.conversationId);
+            if (existing) {
+              return [{ ...existing, updatedAt: new Date().toISOString() }, ...prev.filter((conversation) => conversation.id !== existing.id)];
+            }
             return [
               {
                 id: event.conversationId,
                 projectId,
-                title: "Current conversation",
+                title: wasDraft ? draftTitle : "Assistant conversation",
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               },
@@ -439,11 +390,16 @@ export function AssistantChat({
               case "proposals":
                 return { ...msg, proposals: event.proposals };
               case "done":
-                return { ...msg, isStreaming: false };
+                return event.interrupted
+                  ? { ...msg, isStreaming: false, unverified: Boolean(msg.content), citations: undefined, proposals: undefined }
+                  : { ...msg, isStreaming: false, unverified: false };
               case "error":
                 return {
                   ...msg,
                   isStreaming: false,
+                  unverified: Boolean(msg.content),
+                  citations: undefined,
+                  proposals: undefined,
                   error: { code: event.code, message: event.message, retryable: event.retryable },
                 };
               default:
@@ -465,6 +421,9 @@ export function AssistantChat({
                   ...msg,
                   isStreaming: false,
                   content: msg.content || "Sorry, I encountered an error answering your request.",
+                  unverified: Boolean(msg.content),
+                  citations: undefined,
+                  proposals: undefined,
                   error: { code: "STREAM_FAILED", message: errorMsg, retryable: true },
                 }
               : msg,
@@ -487,18 +446,17 @@ export function AssistantChat({
       setMessages((prev) => prev.map((message) => message.isStreaming ? {
         ...message,
         isStreaming: false,
+        unverified: Boolean(message.content),
+        citations: undefined,
+        proposals: undefined,
         error: { code: "CANCELLED", message: "Response cancelled. You can retry the request.", retryable: true },
       } : message));
     }
   };
 
-  const handleRetryLastMessage = () => {
-    // Find last user message and retry with a freshly generated UUID
-    const lastUserMsg = [...messages].reverse().find((m) => m.sender === "user");
-    if (lastUserMsg) {
-      const retryUuid = generateUuid();
-      void handleSendMessage(lastUserMsg.content, retryUuid);
-    }
+  const handleRetryMessage = (message: UiChatMessage) => {
+    if (!message.retryPrompt || isStreaming) return;
+    void handleSendMessage(message.retryPrompt, generateUuid());
   };
 
   const handleApplyProposal = async (msgId: string, proposal: CommandProposal, sourceMessageId: string) => {
@@ -615,7 +573,8 @@ export function AssistantChat({
                 disabled={isStreaming || isActionPending || !enabled || conversations.length === 0}
                 aria-label="Select conversation"
               >
-                {conversations.length === 0 ? (
+                {!activeConversationId && <option value="">New conversation draft</option>}
+                {conversations.length === 0 && activeConversationId ? (
                   <option value="">No conversations</option>
                 ) : (
                   conversations.map((c) => (
@@ -706,7 +665,7 @@ export function AssistantChat({
               message={message}
               onApplyProposal={(proposal, sourceMessageId) => handleApplyProposal(message.id, proposal, sourceMessageId)}
               onDismissProposal={(p) => handleDismissProposal(message.id, p)}
-              onRetry={handleRetryLastMessage}
+              onRetry={() => handleRetryMessage(message)}
             />
           ))
         )}

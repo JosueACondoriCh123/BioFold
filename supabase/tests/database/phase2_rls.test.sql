@@ -119,16 +119,21 @@ select results_eq(
   'owner A sees user and assistant messages only in their conversation'
 );
 
-select lives_ok(
+select throws_ok(
   $$insert into public.messages (conversation_id, sender, content)
     values ('aa000000-0000-4000-8000-000000000001', 'user', 'Another question')$$,
-  'owner A can insert a user-authored message'
+  '42501',
+  'permission denied for table messages',
+  'browser clients cannot write messages directly'
 );
+
+reset role;
+set local role service_role;
 
 select lives_ok(
   $$insert into public.messages (conversation_id, request_id, sender, content)
     values ('aa000000-0000-4000-8000-000000000001', 'request-idempotent', 'user', 'Idempotent question')$$,
-  'the first durable assistant request message is accepted'
+  'the trusted server can persist the first durable request message'
 );
 
 select throws_ok(
@@ -139,11 +144,15 @@ select throws_ok(
   'the same request cannot persist the same sender twice'
 );
 
+reset role;
+set local role authenticated;
+set local "request.jwt.claim.sub" = '10000000-0000-4000-8000-000000000001';
+
 select throws_ok(
   $$insert into public.messages (conversation_id, sender, content)
     values ('aa000000-0000-4000-8000-000000000001', 'assistant', 'Spoofed answer')$$,
   '42501',
-  'new row violates row-level security policy for table "messages"',
+  'permission denied for table messages',
   'browser clients cannot insert assistant messages'
 );
 

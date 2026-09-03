@@ -23,6 +23,8 @@ export interface UiChatMessage {
   applyingProposals?: Set<string>;
   proposalErrors?: Record<string, string>;
   sourceMessageId?: string;
+  retryPrompt?: string;
+  unverified?: boolean;
   isStreaming?: boolean;
   error?: {
     code: string;

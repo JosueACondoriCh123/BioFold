@@ -74,6 +74,8 @@ La suite E2E de plataforma usa un build **aislado** con `VITE_SUPABASE_URL=https
 - `POST /auth/v1/recover`, `/resend`, `/verify` y `/logout?scope=local`.
 - Google: comprobar la URL de autorización sin visitar ni autorizar Google real.
 
+Estado local al cierre de 2.3: las 323 pruebas Vitest y las 53 pruebas Playwright están aprobadas. El callback PKCE/recovery está cubierto bajo el replay de efectos de React StrictMode y reutiliza un único intercambio de código sin quedar bloqueado por un ticket de inicialización obsoleto.
+
 No basta con insertar un token arbitrario en localStorage. Recuperación PKCE debe iniciar el flujo del SDK o preparar su verificador correctamente; `?type=recovery` no es autorización. `token_hash` requiere mock de verify exitoso. Mantener el caso sin configuración separado del build configurado y respetar la política CSP del entorno.
 
 ## 5. Aceptación real pendiente
@@ -101,7 +103,7 @@ Con una cuenta de prueba autorizada, fuera del repositorio:
 - [ ] Logout durante carga/superficie y recarga posterior sin tokens/escena anterior.
 - [ ] Un segundo usuario no recibe escena ni actividad del primero.
 
-No crear usuarios de evaluación ni cambiar configuración de producción sin autorización del propietario. Publicación en GitHub/Vercel sigue a su cargo.
+No crear usuarios de evaluación ni cambiar configuración de producción sin autorización del propietario. Durante 2.3 no se modificó Auth remoto, SMTP, Google, redirects ni Vercel; publicación y aceptación con dos cuentas reales siguen a cargo del propietario.
 
 ## Referencias oficiales revisadas
 

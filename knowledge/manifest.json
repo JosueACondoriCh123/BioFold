@@ -1,7 +1,23 @@
 {
-  "schemaVersion": 1,
-  "embeddingModel": "gte-small",
-  "embeddingDimensions": 384,
+  "schemaVersion": 2,
+  "corpusVersion": "2.3.0",
+  "embedding": {
+    "model": "gte-small",
+    "dimensions": 384,
+    "meanPool": true,
+    "normalize": true
+  },
+  "normalization": {
+    "id": "markdown-nfc-lf-collapse-v1",
+    "unicode": "NFC",
+    "lineEndings": "LF",
+    "collapseParagraphWhitespace": true
+  },
+  "chunking": {
+    "id": "markdown-heading-paragraph-v1",
+    "maxCharacters": 1200,
+    "maxWords": 180
+  },
   "sources": [
     {
       "id": "biofold-evidence-levels-v1",
@@ -39,5 +55,11 @@
       "url": "https://www.uniprot.org/",
       "mode": "live-metadata-with-seven-day-cache"
     }
-  ]
+  ],
+  "artifacts": {
+    "payloadPath": "./generated/corpus-v2.json",
+    "payloadSha256": "2dd5dd7f3da2affabd8304160e98e92895caf142b7afe028939b3fb9eff310d2",
+    "seedPath": "../supabase/seed.sql",
+    "seedSha256": "9a01baf44fdc8781adb4dfd910df096b15401cbde13f4f9a9a86efa100b2fce1"
+  }
 }

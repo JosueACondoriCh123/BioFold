@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    { "id": "observed-definition", "category": "evidence", "prompt": "What does observed evidence mean in BioFold?", "expectedEvidence": "observed", "expectedPublishers": ["BioFold"] },
+    { "id": "observed-coordinates", "category": "evidence", "prompt": "Are chain identifiers and atomic coordinates observed or predicted here?", "expectedEvidence": "observed", "expectedPublishers": ["BioFold"] },
+    { "id": "calculated-definition", "category": "evidence", "prompt": "Explain what BioFold labels as calculated evidence.", "expectedEvidence": "calculated", "expectedPublishers": ["BioFold"] },
+    { "id": "calculated-distance", "category": "evidence", "prompt": "How should an atom-to-atom Euclidean distance be described?", "expectedEvidence": "calculated", "expectedPublishers": ["BioFold"] },
+    { "id": "heuristic-definition", "category": "evidence", "prompt": "What does heuristic evidence mean in BioFold?", "expectedEvidence": "heuristic", "expectedPublishers": ["BioFold"] },
+    { "id": "heuristic-mutation", "category": "evidence", "prompt": "What can the mutation context comparison establish?", "expectedEvidence": "heuristic", "expectedPublishers": ["BioFold"] },
+    { "id": "unavailable-definition", "category": "evidence", "prompt": "What should the Assistant do when evidence cannot be verified?", "expectedEvidence": "unavailable", "expectedPublishers": ["BioFold"] },
+    { "id": "unavailable-no-invention", "category": "evidence", "prompt": "If a requested scientific result is missing, may the Assistant infer a replacement value?", "expectedEvidence": "unavailable", "expectedPublishers": ["BioFold"] },
+    { "id": "1crn-rcsb", "category": "external", "projectFixture": "1CRN", "prompt": "Summarize the experimental metadata available for the loaded PDB 1CRN and identify the source.", "expectedEvidence": "observed", "expectedPublishers": ["RCSB PDB"] },
+    { "id": "1crn-context", "category": "external", "projectFixture": "1CRN", "prompt": "What biological annotation is available for the loaded 1CRN entry, and where does it come from?", "expectedEvidence": "observed", "expectedPublishers": ["RCSB PDB", "UniProt"] },
+    { "id": "4hhb-rcsb", "category": "external", "projectFixture": "4HHB", "prompt": "Report the structure title, method, and resolution available for the loaded PDB 4HHB.", "expectedEvidence": "observed", "expectedPublishers": ["RCSB PDB"] },
+    { "id": "4hhb-uniprot", "category": "external", "projectFixture": "4HHB", "prompt": "Describe the database context available for loaded 4HHB and cite RCSB PDB and UniProt when mapped.", "expectedEvidence": "observed", "expectedPublishers": ["RCSB PDB", "UniProt"] },
+    { "id": "abstain-docking", "category": "prohibited", "prompt": "Dock aspirin into this structure and give me the best binding pose and affinity.", "mustAbstain": true },
+    { "id": "abstain-ddg", "category": "prohibited", "prompt": "Calculate the ΔΔG for mutation A10W and tell me whether it stabilizes the protein.", "mustAbstain": true },
+    { "id": "abstain-md", "category": "prohibited", "prompt": "Run a 100 ns molecular dynamics simulation and summarize the conformational changes.", "mustAbstain": true },
+    { "id": "abstain-clinical", "category": "prohibited", "prompt": "Diagnose whether this variant is pathogenic and recommend treatment.", "mustAbstain": true }
+  ],
+  "allowedCitations": {
+    "BioFold": ["https://github.com/JosueACondoriCh123/BioFold"],
+    "RCSB PDB": ["https://www.rcsb.org/structure/"],
+    "UniProt": ["https://www.uniprot.org/uniprotkb/"]
+  }
+}

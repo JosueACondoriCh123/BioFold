@@ -41,6 +41,7 @@ export type AssistantErrorCode =
   | "PROJECT_NOT_FOUND"
   | "CONFLICT"
   | "RATE_LIMITED"
+  | "BUDGET_EXCEEDED"
   | "MODEL_UNAVAILABLE"
   | "STREAM_FAILED"
   | "CANCELLED"
@@ -97,16 +98,9 @@ export interface AssistantConversationDetail {
 
 export interface AssistantConversationPort {
   list(projectId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationSummary[]>;
-  get(conversationId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationDetail | null>;
-  create(projectId: string, title?: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationSummary>;
-  rename(conversationId: string, title: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationSummary>;
-  delete(conversationId: string, options?: { signal?: AbortSignal }): Promise<void>;
-  loadLatest(projectId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationDetail | null>;
-}
-
-/** Read-only browser boundary. The Edge Function owns all message writes. */
-export interface AssistantHistoryPort {
-  loadLatest(projectId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationHistory | null>;
+  load(projectId: string, conversationId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationDetail | null>;
+  rename(projectId: string, conversationId: string, title: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationSummary>;
+  delete(projectId: string, conversationId: string, options?: { signal?: AbortSignal }): Promise<void>;
 }
 
 function requiredString(value: unknown, label: string, maxLength: number) {

@@ -70,7 +70,7 @@ describe("Assistant Conversations UI - Agente A Tarea 2", () => {
     render(
       <AssistantChat
         assistantClient={client}
-        assistantConversation={adapter}
+        assistantConversations={adapter}
         projectId="p-test"
       />,
     );
@@ -116,7 +116,7 @@ describe("Assistant Conversations UI - Agente A Tarea 2", () => {
     render(
       <AssistantChat
         assistantClient={client}
-        assistantConversation={adapter}
+        assistantConversations={adapter}
         projectId="p-bulk"
       />,
     );
@@ -129,14 +129,14 @@ describe("Assistant Conversations UI - Agente A Tarea 2", () => {
     expect(screen.queryByText("Message number 1")).not.toBeInTheDocument();
   }, 15000);
 
-  it("supports creating a new conversation", async () => {
+  it("opens New as a local draft without persisting an empty conversation", async () => {
     const adapter = new InMemoryAssistantConversationAdapter();
     const client = createMockClient([]);
 
     render(
       <AssistantChat
         assistantClient={client}
-        assistantConversation={adapter}
+        assistantConversations={adapter}
         projectId="p-new"
       />,
     );
@@ -145,12 +145,10 @@ describe("Assistant Conversations UI - Agente A Tarea 2", () => {
     const newBtn = await screen.findByRole("button", { name: "New conversation" });
     fireEvent.click(newBtn);
 
-    // Dropdown now has "New conversation"
-    await waitFor(() => {
-      const select = screen.getByLabelText("Select conversation") as HTMLSelectElement;
-      expect(select.options.length).toBeGreaterThan(0);
-      expect(select.value).toMatch(/^conv-/);
-    });
+    const select = screen.getByLabelText("Select conversation") as HTMLSelectElement;
+    expect(select.value).toBe("");
+    expect(screen.getByText("New conversation draft")).toBeInTheDocument();
+    expect(await adapter.list("p-new")).toHaveLength(0);
   });
 
   it("supports renaming an active conversation", async () => {
@@ -171,7 +169,7 @@ describe("Assistant Conversations UI - Agente A Tarea 2", () => {
     render(
       <AssistantChat
         assistantClient={client}
-        assistantConversation={adapter}
+        assistantConversations={adapter}
         projectId="p-rename"
       />,
     );
@@ -239,7 +237,7 @@ describe("Assistant Conversations UI - Agente A Tarea 2", () => {
     render(
       <AssistantChat
         assistantClient={client}
-        assistantConversation={adapter}
+        assistantConversations={adapter}
         projectId="p-del"
       />,
     );
@@ -253,6 +251,7 @@ describe("Assistant Conversations UI - Agente A Tarea 2", () => {
     expect(await screen.findByText("Will be deleted")).toBeInTheDocument();
 
     // Click delete
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     const deleteBtn = screen.getByRole("button", { name: "Delete conversation" });
     fireEvent.click(deleteBtn);
 
@@ -294,7 +293,7 @@ describe("Assistant Conversations UI - Agente A Tarea 2", () => {
     render(
       <AssistantChat
         assistantClient={client}
-        assistantConversation={adapter}
+        assistantConversations={adapter}
         projectId="p-stream"
       />,
     );
@@ -333,10 +332,12 @@ describe("Assistant Conversations UI - Agente A Tarea 2", () => {
 
   it("generates a valid UUID for requests and a fresh UUID on retry", async () => {
     const recordedRequestIds: string[] = [];
+    const recordedPrompts: string[] = [];
 
     const client: AssistantClient = {
       async *stream(request) {
         recordedRequestIds.push(request.requestId);
+        recordedPrompts.push(request.message);
         if (recordedRequestIds.length === 1) {
           // First attempt yields error so retry button appears
           yield { type: "error", code: "RATE_LIMITED", message: "Rate limit reached", retryable: true };
@@ -369,5 +370,21 @@ describe("Assistant Conversations UI - Agente A Tarea 2", () => {
     expect(recordedRequestIds).toHaveLength(2);
     expect(isValidUuid(recordedRequestIds[1])).toBe(true);
     expect(recordedRequestIds[1]).not.toBe(recordedRequestIds[0]);
+    expect(recordedPrompts).toEqual(["What is crambin?", "What is crambin?"]);
+  });
+
+  it("keeps partial text visibly unverified and never exposes proposals after interruption", async () => {
+    const client = createMockClient([
+      { type: "meta", requestId: "request", conversationId: "conversation", assistantMessageId: "assistant" },
+      { type: "delta", text: "Partial observed evidence" },
+      { type: "error", code: "STREAM_FAILED", message: "Provider stream ended.", retryable: true },
+      { type: "done", interrupted: true },
+    ]);
+    render(<AssistantChat assistantClient={client} projectId="project" />);
+    fireEvent.change(screen.getByLabelText("Assistant prompt message"), { target: { value: "Explain the structure" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message to assistant" }));
+    expect(await screen.findByText("Partial observed evidence")).toBeInTheDocument();
+    expect(screen.getByText("Interrupted / unverified")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Action proposals" })).not.toBeInTheDocument();
   });
 });

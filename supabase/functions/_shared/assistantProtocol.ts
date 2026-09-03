@@ -56,7 +56,7 @@ export function parseEdgeAssistantRequest(value: unknown): EdgeAssistantRequest 
     requestId: requiredText(input.requestId, "requestId", 128),
     projectId,
     ...(conversationId ? { conversationId } : {}),
-    message: requiredText(input.message, "message", 4_000),
+    message: requiredText(input.message, "message", 8_000),
   };
 }
 
@@ -121,7 +121,8 @@ function parseCommandInput(command: EdgeCommandProposal["command"], value: unkno
 
 export function parseModelAnswer(value: unknown): ModelAnswer {
   const record = strictRecord(value, ["answer", "proposals"], "Model answer");
-  const answer = requiredText(record.answer, "answer", 8_000);
+  if (typeof record.answer !== "string" || !record.answer.trim() || record.answer.length > 8_000) throw new Error("answer is invalid.");
+  const answer = record.answer;
   if (!Array.isArray(record.proposals) || record.proposals.length > 3) throw new Error("The model may propose at most three commands.");
   const proposals = record.proposals.map((candidate, index): EdgeCommandProposal => {
     const proposal = strictRecord(candidate, ["id", "command", "input", "rationale"], `Proposal ${index + 1}`);

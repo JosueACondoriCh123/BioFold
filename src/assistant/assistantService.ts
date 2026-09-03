@@ -1,20 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseClient, getSupabaseEnvConfig } from "../auth/supabaseClient";
 import { createDefaultAssistantMock } from "../phase2/mockAssistantClient";
-import type { AssistantClient, AssistantConversationPort, AssistantHistoryPort } from "../types/assistant";
+import type { AssistantClient, AssistantConversationPort } from "../types/assistant";
 import type { Database } from "../types/database.types";
 import { createAssistantHttpClient } from "./assistantClient";
-import {
-  EmptyAssistantHistoryAdapter,
-  InMemoryAssistantConversationAdapter,
-  SupabaseAssistantConversationAdapter,
-  SupabaseAssistantHistoryAdapter,
-} from "./assistantHistory";
+import { InMemoryAssistantConversationAdapter, SupabaseAssistantConversationAdapter } from "./assistantConversation";
 
 export interface AssistantServices {
   client: AssistantClient;
-  conversation: AssistantConversationPort;
-  history: AssistantHistoryPort;
+  conversations: AssistantConversationPort;
   remote: boolean;
 }
 
@@ -35,8 +29,7 @@ export function getAssistantServices(): AssistantServices {
           publishableKey: config.publishableKey,
           getAccessToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null,
         }),
-        conversation: conversationAdapter,
-        history: conversationAdapter,
+        conversations: conversationAdapter,
         remote: true,
       };
     }
@@ -45,9 +38,7 @@ export function getAssistantServices(): AssistantServices {
   const emptyAdapter = new InMemoryAssistantConversationAdapter();
   return {
     client: createDefaultAssistantMock(),
-    conversation: emptyAdapter,
-    history: new EmptyAssistantHistoryAdapter(),
+    conversations: emptyAdapter,
     remote: false,
   };
 }
-

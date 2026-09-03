@@ -227,10 +227,12 @@ export class AuthSessionController {
   };
 
   completeCallback = async (): Promise<string> => {
-    const ticket = this.epoch;
     await this.initialization;
     const outcome = this.callbackOutcome;
-    if (!this.current(ticket) || !outcome?.handled || outcome.error || !outcome.session
+    // React StrictMode can stop and restart the provider while the one-time PKCE
+    // exchange is pending. Validate the active post-initialization state instead
+    // of a ticket captured before that restart.
+    if (!this.active || !outcome?.handled || outcome.error || !outcome.session
       || outcome.session.user.id !== this.snapshot.session?.user.id || this.snapshot.error) {
       throw new Error("Sign-in could not be completed. Request a new link and try again.");
     }

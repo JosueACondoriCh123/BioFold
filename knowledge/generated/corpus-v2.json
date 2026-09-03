@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2.3.0",
+  "embedding": {
+    "model": "gte-small",
+    "dimensions": 384,
+    "meanPool": true,
+    "normalize": true
+  },
+  "normalization": {
+    "id": "markdown-nfc-lf-collapse-v1",
+    "unicode": "NFC",
+    "lineEndings": "LF",
+    "collapseParagraphWhitespace": true
+  },
+  "chunking": {
+    "id": "markdown-heading-paragraph-v1",
+    "maxCharacters": 1200,
+    "maxWords": 180
+  },
+  "sources": [
+    {
+      "id": "biofold-evidence-levels-v1",
+      "title": "Scientific evidence levels in BioFold",
+      "publisher": "BioFold",
+      "url": "https://github.com/JosueACondoriCh123/BioFold",
+      "license": "MIT",
+      "retrievedAt": "2026-09-01",
+      "contentPath": "knowledge/evidence-levels.md",
+      "checksum": "5dfca4e25bdd95847fbce42f5e5e27cdbca1c35360e2f78609baf8f46b7be59d",
+      "chunks": [
+        {
+          "index": 0,
+          "title": "Scientific evidence levels in BioFold — Scientific evidence levels in BioFold",
+          "locator": "Scientific evidence levels in BioFold",
+          "content": "BioFold separates statements by how they were produced. This distinction must remain visible in the laboratory, persisted project events, citations, and assistant responses.",
+          "wordCount": 23,
+          "checksum": "67937ecc69ac3194c1a14aec78830657212c670ec69557c5a21d86b98ad7e053"
+        },
+        {
+          "index": 1,
+          "title": "Scientific evidence levels in BioFold — Observed",
+          "locator": "Observed",
+          "content": "Observed information comes directly from the loaded structural record: atomic coordinates, chain identifiers, residue identifiers, atom names, ligands, and waters. Observed does not mean that every biological interpretation is proven; it means BioFold read the value from the selected structure.",
+          "wordCount": 40,
+          "checksum": "66f225869dadf5171824f3825d963a3ce3a8ada8a7af378dd6285624c030c1e1"
+        },
+        {
+          "index": 2,
+          "title": "Scientific evidence levels in BioFold — Calculated",
+          "locator": "Calculated",
+          "content": "Calculated information is derived deterministically from observed coordinates or viewer state. Examples include Euclidean atom-to-atom distance, residue counts, neighbors inside a fixed radius, and the representation currently applied. Calculated values should identify their units and input references.",
+          "wordCount": 37,
+          "checksum": "83fba3b435c13997e36b5c81e965951ecc3a86581a19891866c6b9940895a122"
+        },
+        {
+          "index": 3,
+          "title": "Scientific evidence levels in BioFold — Heuristic",
+          "locator": "Heuristic",
+          "content": "Heuristic information is a qualitative comparison intended to guide exploration. BioFold's mutation context compares coarse charge, size, and hydrophobicity categories and identifies spatial neighbors in the static structure. It does not predict stability, folding, binding affinity, pathogenicity, or clinical effect.",
+          "wordCount": 40,
+          "checksum": "dc8667b86c33d7d5748035ed22dc8b837be5222b04b00207cff1e492f9cd5c90"
+        },
+        {
+          "index": 4,
+          "title": "Scientific evidence levels in BioFold — Unavailable",
+          "locator": "Unavailable",
+          "content": "Unavailable indicates that BioFold could not obtain or verify the requested evidence. The assistant must say what is missing and must not replace the missing result with an invented scientific claim.",
+          "wordCount": 31,
+          "checksum": "58d009cdd3e83242726653b5feae65ad174b814f5f5f390c2810020877ae6ff0"
+        }
+      ]
+    },
+    {
+      "id": "biofold-structure-interpretation-v1",
+      "title": "Interpreting molecular structure context",
+      "publisher": "BioFold",
+      "url": "https://github.com/JosueACondoriCh123/BioFold",
+      "license": "MIT",
+      "retrievedAt": "2026-09-01",
+      "contentPath": "knowledge/structure-interpretation.md",
+      "checksum": "4a32ae9ccde3f54251e396c2475536bc6892762d0c735ec33503451057af8710",
+      "chunks": [
+        {
+          "index": 0,
+          "title": "Interpreting molecular structure context — Interpreting molecular structure context",
+          "locator": "Interpreting molecular structure context",
+          "content": "A molecular structure is a model of coordinates under specific experimental or computational conditions. BioFold uses the selected PDB entry as the coordinate source and should identify that entry in every structure-specific explanation.\n\nRepresentations such as cartoon, stick, sphere, and line change how the same coordinates are displayed. They do not change the molecule or produce a new structure. Molecular surfaces are computed visual overlays and their opacity is only a rendering parameter.\n\nAn atom-to-atom distance is a Euclidean calculation between two unambiguous coordinates and is reported in ångströms. A neighborhood search reports residues with atoms inside a stated cutoff. These measurements describe the loaded static coordinates and should not be presented as molecular dynamics.\n\nRCSB PDB metadata and UniProt annotations add biological context, but the assistant must cite the exact source and distinguish database annotation from a calculation performed by BioFold. If sources disagree or mapping is ambiguous, the uncertainty must remain explicit.",
+          "wordCount": 154,
+          "checksum": "8716733e0a8f587fdf7b8e9327cdff1300d9d57706de330a45fe1b4814f7c24d"
+        }
+      ]
+    }
+  ]
+}

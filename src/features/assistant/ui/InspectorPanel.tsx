@@ -1,6 +1,6 @@
 import { useState, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { Layers3, Bot, ChevronRight, ChevronLeft } from "lucide-react";
-import type { AssistantClient, AssistantConversationPort, AssistantHistoryPort } from "../../../types/assistant";
+import type { AssistantClient, AssistantConversationPort } from "../../../types/assistant";
 import type {
   ActivityEntry,
   DistanceMeasurement,
@@ -14,8 +14,7 @@ import "./assistant.css";
 
 export interface InspectorPanelProps {
   assistantClient: AssistantClient;
-  assistantHistory?: AssistantHistoryPort;
-  assistantConversation?: AssistantConversationPort;
+  assistantConversations?: AssistantConversationPort;
   assistantEnabled?: boolean;
   projectId?: string;
   defaultTab?: InspectorTabId;
@@ -30,8 +29,7 @@ export interface InspectorPanelProps {
 
 export function InspectorPanel({
   assistantClient,
-  assistantHistory,
-  assistantConversation,
+  assistantConversations,
   assistantEnabled = true,
   projectId = "default-project",
   defaultTab = "results",
@@ -153,8 +151,7 @@ export function InspectorPanel({
           >
             <AssistantChat
               assistantClient={assistantClient}
-              assistantHistory={assistantHistory}
-              assistantConversation={assistantConversation}
+              assistantConversations={assistantConversations}
               enabled={assistantEnabled}
               confirmedActivities={activityEntries}
               projectId={projectId}

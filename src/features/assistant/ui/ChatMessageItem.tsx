@@ -46,6 +46,7 @@ export function ChatMessageItem({
             {message.content}
             {message.isStreaming && <span className="bf-typing-cursor" aria-hidden="true" />}
           </p>
+          {message.unverified && <p className="bf-message-unverified">Interrupted / unverified</p>}
         </div>
 
         {/* Citations List */}

@@ -70,7 +70,7 @@ AS $$
   semantic AS (
     SELECT
       kc.id,
-      row_number() OVER (ORDER BY kc.embedding <=> query_embedding) AS rank
+      row_number() OVER (ORDER BY kc.embedding OPERATOR(extensions.<=>) query_embedding) AS rank
     FROM public.knowledge_chunks AS kc
     WHERE query_embedding IS NOT NULL
       AND kc.embedding IS NOT NULL

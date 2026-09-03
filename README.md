@@ -53,8 +53,11 @@ flowchart TB
   - **Results Tab:** Quantitative composition breakdown (chains, residues, atoms, waters), live sub-ångström distance readouts with Euclidean vectors, mutation context with 5.0 Å spatial neighbors & physicochemical shifts (charge, volume, hydropathy), and an audited chronological activity stream.
   - **Assistant Tab:** Interactive AI chat powered by streaming token deltas, Markdown rendering, and contextual prompts.
 - **Explicit Command Proposals:** When proposing changes to the 3D scene (e.g. focusing residues, adjusting representations, computing surfaces), the Assistant generates structured `CommandProposal` cards with scientific rationales. Actions require explicit human confirmation (**`Apply`** vs. **`Dismiss`**) with `approvedByUser: true` before execution.
+- **Validated provider streaming:** OpenRouter runs the fixed `openai/gpt-5-mini` model with strict structured output. Only the decoded answer streams immediately; citations and the eight audited proposal types are published after complete validation and persistence.
 - **Scientific Citations & Provenance:** Built-in citations drawer with verified HTTPS links and publisher badges (`BioFold`, `RCSB PDB`, `UniProt`).
 - **Generation Controls:** Live `Stop generating` cancellation via `AbortController` and one-click `Retry` on network interruptions.
+- **Multiple Conversations:** Up to 50 private conversations per project, with local drafts, switching, rename, confirmed deletion, and the latest 100 messages restored chronologically.
+- **Atomic Free Tier:** Six new requests per 60 seconds and USD 1 per user/UTC day, with server-side reservation and reconciliation. There are no project quotas, payments, or upgrade prompts.
 
 ### 3. Interactive 3D Molecular Laboratory
 - **High-Performance 3Dmol.js Viewer:** Hardware-accelerated WebGL molecular graphics with cartoon, stick, sphere, and line representations.
@@ -187,12 +190,18 @@ pnpm build
 
 # 5. Full browser End-to-End test suite (Playwright)
 pnpm test:e2e
+
+# 6. Reproducible corpus and clean local PostgreSQL gate
+pnpm knowledge:check
+pnpm supabase:reset
+pnpm supabase:test
 ```
 
 ### Test Coverage Highlights:
 - **`tests/data/`**: Tests for `SupabaseProjectDataAdapter`, optimistic concurrency locking (`CONFLICT`), input validation, and PostgreSQL Row-Level Security (RLS) simulation for User A, User B, and anonymous access.
 - **`tests/features/`**: Tests for `ProjectsDashboard`, `PersistenceIndicator` (`Saving`, `Saved`, `Offline`, `Conflict`, `Error`), `ProjectDialog`, `InspectorPanel`, `ResultsTab`, and `AssistantChat` (streaming, cancellation, citations, and command proposals).
 - **`tests/auth/`**: Complete Supabase authentication adapter tests, PKCE flows, session recovery, password update, and navigation redirects.
+- **`evals/assistant/`**: Sixteen versioned live RAG cases covering evidence levels, 1CRN/4HHB sources, and mandatory abstention for out-of-scope scientific requests.
 - **`tests/e2e/`**: Playwright browser tests verifying landing isolation (no WebGL on home), protected routes, complete auth lifecycle, private project CRUD boundary, scene preservation, and agent WebMCP interactions.
 
 ---
@@ -204,10 +213,13 @@ The persistent layer is backed by Supabase PostgreSQL migrations located in [`su
 1. **`20260901000000_enable_extensions_and_helpers.sql`**: Enables `pgvector` extension and timestamp trigger functions.
 2. **`20260901000001_create_profiles_and_projects.sql`**: User profiles and private projects with cascaded foreign keys and owner-isolated RLS.
 3. **`20260901000002_create_project_events.sql`**: Activity audit trails with domain status and scientific evidence classifications.
-4. **`20260901000003_create_conversations_and_messages.sql`**: AI conversations with client writes restricted strictly to `sender = 'user'`.
-5. **`20260901000004_create_ai_requests_and_structure_metadata.sql`**: Token consumption telemetry and public mmCIF cache.
+4. **`20260901000003_create_conversations_and_messages.sql`**: AI conversations and message history; Phase 2.3 later makes every message write server-only.
+5. **`20260901000004_create_ai_requests_and_structure_metadata.sql`**: Initial token consumption and legacy structure metadata tables.
 6. **`20260901000005_create_knowledge_corpus.sql`**: Domain knowledge sources and 384-dimensional chunk embeddings (`vector(384)`) indexed with HNSW cosine distance (`vector_cosine_ops`).
 7. **`20260901225652_phase2_assistant_rag.sql`**: Idempotent Assistant messages, full-text search, reciprocal-rank hybrid retrieval and server-only execution privileges.
+8. **`20260902233000_phase2_3_db_controls.sql`**: Atomic rate/budget RPCs, conversation recency, server-only corpus ingestion, provider-keyed RCSB/UniProt cache, telemetry and least-privilege grants.
+
+`knowledge/manifest.json` is the schema-v2 corpus authority. `pnpm knowledge:build` deterministically regenerates its payload and seed, while `pnpm knowledge:ingest` calls the POST-only administrative function protected by `BIOFOLD_INGEST_TOKEN`.
 
 ---
 
@@ -224,6 +236,8 @@ BioFold 3D is designed for zero-config static hosting on modern edge platforms l
    - `https://your-biofold-app.vercel.app/**`
    - `https://your-biofold-app.vercel.app/auth/callback`
 5. Deploy. `vercel.json` provides strict Content Security Policies, Permissions Policies for WebMCP, and SPA route rewrites.
+
+Assistant secrets belong in Supabase Edge Functions, not Vercel: `OPENROUTER_API_KEY`, `OPENROUTER_SITE_URL`, `BIOFOLD_ALLOWED_ORIGINS`, `BIOFOLD_INGEST_TOKEN`, `BIOFOLD_USER_DAILY_BUDGET_USD=1.00`, and `BIOFOLD_REQUEST_RESERVE_USD=0.05`. The provider model is fixed in code to `openai/gpt-5-mini`.
 
 ---
 

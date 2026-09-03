@@ -17,7 +17,8 @@ export class SupabaseAssistantConversationAdapter implements AssistantConversati
       .from("conversations")
       .select("id, project_id, title, created_at, updated_at")
       .eq("project_id", projectId)
-      .order("updated_at", { ascending: false });
+      .order("updated_at", { ascending: false })
+      .limit(50);
     if (options?.signal) query = query.abortSignal(options.signal);
     const { data, error } = await query;
     if (error) throw new Error(error.message);
@@ -30,12 +31,13 @@ export class SupabaseAssistantConversationAdapter implements AssistantConversati
     }));
   }
 
-  async get(conversationId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationDetail | null> {
+  async load(projectId: string, conversationId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationDetail | null> {
     if (options?.signal?.aborted) throw new DOMException("The request was cancelled.", "AbortError");
     let convQuery = this.client
       .from("conversations")
       .select("id, project_id, title, created_at, updated_at")
-      .eq("id", conversationId);
+      .eq("id", conversationId)
+      .eq("project_id", projectId);
     if (options?.signal) convQuery = convQuery.abortSignal(options.signal);
     const { data: convData, error: convError } = await convQuery.maybeSingle();
     if (convError) throw new Error(convError.message);
@@ -63,33 +65,15 @@ export class SupabaseAssistantConversationAdapter implements AssistantConversati
     };
   }
 
-  async create(projectId: string, title = "New conversation", options?: { signal?: AbortSignal }): Promise<AssistantConversationSummary> {
+  async rename(projectId: string, conversationId: string, title: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationSummary> {
     if (options?.signal?.aborted) throw new DOMException("The request was cancelled.", "AbortError");
-    const cleanTitle = title.trim().slice(0, 120) || "New conversation";
-    let query = this.client
-      .from("conversations")
-      .insert({ project_id: projectId, title: cleanTitle })
-      .select("id, project_id, title, created_at, updated_at");
-    if (options?.signal) query = query.abortSignal(options.signal);
-    const { data, error } = await query.single();
-    if (error) throw new Error(error.message);
-    return {
-      id: data.id,
-      projectId: data.project_id,
-      title: data.title,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-    };
-  }
-
-  async rename(conversationId: string, title: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationSummary> {
-    if (options?.signal?.aborted) throw new DOMException("The request was cancelled.", "AbortError");
-    const cleanTitle = title.trim().slice(0, 120);
+    const cleanTitle = title.trim().replace(/\s+/g, " ").slice(0, 120);
     if (!cleanTitle) throw new Error("Conversation title cannot be empty.");
     let query = this.client
       .from("conversations")
       .update({ title: cleanTitle, updated_at: new Date().toISOString() })
       .eq("id", conversationId)
+      .eq("project_id", projectId)
       .select("id, project_id, title, created_at, updated_at");
     if (options?.signal) query = query.abortSignal(options.signal);
     const { data, error } = await query.single();
@@ -103,32 +87,18 @@ export class SupabaseAssistantConversationAdapter implements AssistantConversati
     };
   }
 
-  async delete(conversationId: string, options?: { signal?: AbortSignal }): Promise<void> {
+  async delete(projectId: string, conversationId: string, options?: { signal?: AbortSignal }): Promise<void> {
     if (options?.signal?.aborted) throw new DOMException("The request was cancelled.", "AbortError");
     let query = this.client
       .from("conversations")
       .delete()
-      .eq("id", conversationId);
+      .eq("id", conversationId)
+      .eq("project_id", projectId);
     if (options?.signal) query = query.abortSignal(options.signal);
     const { error } = await query;
     if (error) throw new Error(error.message);
   }
 
-  async loadLatest(projectId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationDetail | null> {
-    if (options?.signal?.aborted) throw new DOMException("The request was cancelled.", "AbortError");
-    let query = this.client
-      .from("conversations")
-      .select("id, project_id, title, created_at, updated_at")
-      .eq("project_id", projectId)
-      .order("updated_at", { ascending: false })
-      .limit(1);
-    if (options?.signal) query = query.abortSignal(options.signal);
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    const latest = data?.[0];
-    if (!latest) return null;
-    return this.get(latest.id, options);
-  }
 }
 
 export interface InMemoryConversationData {
@@ -155,13 +125,14 @@ export class InMemoryAssistantConversationAdapter implements AssistantConversati
     return Array.from(this.conversations.values())
       .filter((c) => c.summary.projectId === projectId)
       .map((c) => ({ ...c.summary }))
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 50);
   }
 
-  async get(conversationId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationDetail | null> {
+  async load(projectId: string, conversationId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationDetail | null> {
     if (options?.signal?.aborted) throw new DOMException("The request was cancelled.", "AbortError");
     const found = this.conversations.get(conversationId);
-    if (!found) return null;
+    if (!found || found.summary.projectId !== projectId) return null;
     const last100 = found.messages.slice(-100);
     return {
       conversationId: found.summary.id,
@@ -173,43 +144,21 @@ export class InMemoryAssistantConversationAdapter implements AssistantConversati
     };
   }
 
-  async create(projectId: string, title = "New conversation", options?: { signal?: AbortSignal }): Promise<AssistantConversationSummary> {
-    if (options?.signal?.aborted) throw new DOMException("The request was cancelled.", "AbortError");
-    const id = "conv-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
-    const now = new Date().toISOString();
-    const cleanTitle = title.trim().slice(0, 120) || "New conversation";
-    const summary: AssistantConversationSummary = {
-      id,
-      projectId,
-      title: cleanTitle,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.conversations.set(id, { summary, messages: [] });
-    return { ...summary };
-  }
-
-  async rename(conversationId: string, title: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationSummary> {
+  async rename(projectId: string, conversationId: string, title: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationSummary> {
     if (options?.signal?.aborted) throw new DOMException("The request was cancelled.", "AbortError");
     const found = this.conversations.get(conversationId);
-    if (!found) throw new Error("Conversation not found.");
-    const cleanTitle = title.trim().slice(0, 120);
+    if (!found || found.summary.projectId !== projectId) throw new Error("Conversation not found.");
+    const cleanTitle = title.trim().replace(/\s+/g, " ").slice(0, 120);
     if (!cleanTitle) throw new Error("Conversation title cannot be empty.");
     found.summary.title = cleanTitle;
     found.summary.updatedAt = new Date().toISOString();
     return { ...found.summary };
   }
 
-  async delete(conversationId: string, options?: { signal?: AbortSignal }): Promise<void> {
+  async delete(projectId: string, conversationId: string, options?: { signal?: AbortSignal }): Promise<void> {
     if (options?.signal?.aborted) throw new DOMException("The request was cancelled.", "AbortError");
-    this.conversations.delete(conversationId);
-  }
-
-  async loadLatest(projectId: string, options?: { signal?: AbortSignal }): Promise<AssistantConversationDetail | null> {
-    if (options?.signal?.aborted) throw new DOMException("The request was cancelled.", "AbortError");
-    const list = await this.list(projectId, options);
-    if (list.length === 0) return null;
-    return this.get(list[0].id, options);
+    const found = this.conversations.get(conversationId);
+    if (found?.summary.projectId === projectId) this.conversations.delete(conversationId);
   }
 
   addMessage(conversationId: string, message: PersistedAssistantMessage): void {

@@ -37,6 +37,18 @@ describe("Assistant SSE client", () => {
     ]);
   });
 
+  it("preserves a CRLF event boundary split between byte chunks", async () => {
+    const response = sseResponse([
+      "event: delta\r\ndata: {\"type\":\"delta\",\"text\":\"A\"}\r",
+      "\n\r",
+      "\nevent: done\r\ndata: {\"type\":\"done\",\"interrupted\":false}\r\n\r\n",
+    ]);
+    await expect(collect(decodeAssistantSse(response))).resolves.toEqual([
+      { type: "delta", text: "A" },
+      { type: "done", interrupted: false },
+    ]);
+  });
+
   it("sends only the public application key and current user token", async () => {
     const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
       expect(init?.headers).toMatchObject({
@@ -81,5 +93,18 @@ describe("Assistant SSE client", () => {
       { signal: controller.signal },
     ));
     expect(events).toEqual([{ type: "error", code: "CANCELLED", message: "The response was cancelled.", retryable: true }]);
+  });
+
+  it("preserves the server-only daily budget error without upselling", async () => {
+    const response = Response.json({ error: {
+      code: "BUDGET_EXCEEDED",
+      message: "The free daily Assistant limit has been reached. It resets at 00:00 UTC tomorrow.",
+      retryable: false,
+    } }, { status: 402 });
+    await expect(collect(decodeAssistantSse(response))).rejects.toMatchObject({
+      code: "BUDGET_EXCEEDED",
+      retryable: false,
+      message: expect.stringContaining("00:00 UTC"),
+    });
   });
 });

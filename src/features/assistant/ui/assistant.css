@@ -895,6 +895,15 @@
 }
 
 /* Message Error */
+.bf-message-unverified {
+  margin: 0.35rem 0 0;
+  color: #b7791f;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 .bf-message-error {
   display: flex;
   align-items: center;

@@ -106,7 +106,7 @@ export function parseAssistantStreamEvent(input: unknown): AssistantStreamEvent 
       return { type: "done", interrupted: value.interrupted };
     case "error":
       if (!["AUTH_REQUIRED", "INVALID_INPUT", "PROJECT_NOT_FOUND", "CONFLICT",
-        "RATE_LIMITED", "MODEL_UNAVAILABLE", "STREAM_FAILED", "CANCELLED",
+        "RATE_LIMITED", "BUDGET_EXCEEDED", "MODEL_UNAVAILABLE", "STREAM_FAILED", "CANCELLED",
         "UNKNOWN_ERROR"].includes(String(value.code))) {
         throw new AssistantTransportError("STREAM_FAILED", "Assistant error code is unsupported.", false);
       }
@@ -146,15 +146,26 @@ function parseSseBlock(block: string): AssistantStreamEvent | null {
 export async function* decodeAssistantSse(response: Response): AsyncIterable<AssistantStreamEvent> {
   if (!response.ok) {
     let message = `Assistant request failed with HTTP ${response.status}.`;
+    let code: AssistantErrorCode = response.status === 401
+      ? "AUTH_REQUIRED"
+      : response.status === 402
+        ? "BUDGET_EXCEEDED"
+        : response.status === 409
+          ? "CONFLICT"
+          : response.status === 429
+            ? "RATE_LIMITED"
+            : "MODEL_UNAVAILABLE";
+    let retryable = response.status === 409 || response.status === 429 || response.status >= 500;
     try {
-      const payload = await response.json() as { error?: { message?: unknown } };
+      const payload = await response.json() as { error?: { code?: unknown; message?: unknown; retryable?: unknown } };
       if (typeof payload.error?.message === "string") message = payload.error.message;
+      const candidate = payload.error?.code;
+      if (typeof candidate === "string" && ["AUTH_REQUIRED", "INVALID_INPUT", "PROJECT_NOT_FOUND", "CONFLICT",
+        "RATE_LIMITED", "BUDGET_EXCEEDED", "MODEL_UNAVAILABLE", "STREAM_FAILED", "CANCELLED",
+        "UNKNOWN_ERROR"].includes(candidate)) code = candidate as AssistantErrorCode;
+      if (typeof payload.error?.retryable === "boolean") retryable = payload.error.retryable;
     } catch { /* The status remains the authoritative fallback. */ }
-    throw new AssistantTransportError(
-      response.status === 401 ? "AUTH_REQUIRED" : response.status === 429 ? "RATE_LIMITED" : "MODEL_UNAVAILABLE",
-      message,
-      response.status === 429 || response.status >= 500,
-    );
+    throw new AssistantTransportError(code, message, retryable);
   }
   if (!response.body) throw new AssistantTransportError("STREAM_FAILED", "Assistant response has no stream body.", true);
 
@@ -164,7 +175,10 @@ export async function* decodeAssistantSse(response: Response): AsyncIterable<Ass
   try {
     while (true) {
       const { value, done } = await reader.read();
-      buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
+      buffer += decoder.decode(value, { stream: !done });
+      // Normalize only after concatenation so a CRLF split across byte chunks
+      // cannot manufacture an empty event boundary.
+      buffer = buffer.replace(/\r\n/g, "\n");
       let boundary = buffer.indexOf("\n\n");
       while (boundary >= 0) {
         const block = buffer.slice(0, boundary);

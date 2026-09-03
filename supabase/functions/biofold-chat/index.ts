@@ -1,10 +1,24 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.112.4";
 import { parseEdgeAssistantRequest, sse, type EdgeCommandProposal } from "../_shared/assistantProtocol.ts";
-import { requestOpenRouter } from "../_shared/openRouter.ts";
+import { createValidatedAssistantSseStream } from "../_shared/assistantSseStream.ts";
+import { loadExternalEvidence, type Citation } from "../_shared/externalEvidence.ts";
 
 const localOrigins = ["http://127.0.0.1:4173", "http://localhost:4173", "http://127.0.0.1:5173", "http://localhost:5173"];
+const assistantModel = "openai/gpt-5-mini";
 const encoder = new TextEncoder();
+
+function positiveSetting(name: string, fallback: number) {
+  const parsed = Number(Deno.env.get(name) ?? fallback);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function logAssistantRequest(requestId: string, status: string, startedAt: number, extra: Record<string, unknown> = {}) {
+  console.info(JSON.stringify({
+    event: "assistant_request", requestId, model: assistantModel, status,
+    durationMs: Date.now() - startedAt, ...extra,
+  }));
+}
 
 function origins() {
   const configured = Deno.env.get("BIOFOLD_ALLOWED_ORIGINS")?.split(",").map((item) => item.trim()).filter(Boolean);
@@ -35,94 +49,14 @@ function streamResponse(origin: string | null, events: string[]) {
   });
 }
 
-type Citation = {
-  id: string; title: string; publisher: "BioFold" | "RCSB PDB" | "UniProt";
-  url: string; locator?: string; retrievedAt: string;
-};
-
-type ExternalEvidence = { context: string; citations: Citation[] };
-
-function record(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-async function fetchJson(url: string, init: RequestInit, signal: AbortSignal) {
-  const combined = AbortSignal.any([signal, AbortSignal.timeout(6_000)]);
-  const response = await fetch(url, { ...init, signal: combined });
-  if (!response.ok) throw new Error(`Scientific metadata request failed with HTTP ${response.status}.`);
-  return response.json() as Promise<unknown>;
-}
-
-async function loadExternalEvidence(service: ReturnType<typeof createClient>, pdbId: string | null, signal: AbortSignal): Promise<ExternalEvidence> {
-  if (!pdbId) return { context: "", citations: [] };
-  const normalized = pdbId.toUpperCase();
-  try {
-    const { data: cached } = await service.from("structure_metadata").select("summary,expires_at").eq("pdb_id", normalized).maybeSingle();
-    const summary = record(cached?.summary);
-    if (cached && new Date(cached.expires_at).getTime() > Date.now() && typeof summary.context === "string" && Array.isArray(summary.citations)) {
-      return { context: summary.context, citations: summary.citations as Citation[] };
-    }
-
-    const now = new Date().toISOString();
-    const entry = record(await fetchJson(`https://data.rcsb.org/rest/v1/core/entry/${encodeURIComponent(normalized)}`, {}, signal));
-    const structure = record(entry.struct);
-    const info = record(entry.rcsb_entry_info);
-    const accession = record(entry.rcsb_accession_info);
-    const experiments = Array.isArray(entry.exptl) ? entry.exptl.map(record) : [];
-    const resolution = Array.isArray(info.resolution_combined) && typeof info.resolution_combined[0] === "number" ? info.resolution_combined[0] : null;
-    const title = typeof structure.title === "string" ? structure.title : `RCSB structure ${normalized}`;
-    const method = typeof experiments[0]?.method === "string" ? experiments[0].method : null;
-    const parts = [`RCSB PDB ${normalized}: ${title}.`, method ? `Experimental method: ${method}.` : "", resolution ? `Reported resolution: ${resolution} Å.` : ""].filter(Boolean);
-    const citations: Citation[] = [{ id: `rcsb-${normalized}`, title, publisher: "RCSB PDB", url: `https://www.rcsb.org/structure/${normalized}`, locator: `Entry ${normalized}`, retrievedAt: now }];
-
-    try {
-      const query = `query BioFoldMappings($id: String!) { entry(entry_id: $id) { polymer_entities { rcsb_polymer_entity_container_identifiers { reference_sequence_identifiers { database_accession database_name } } } } }`;
-      const graph = record(await fetchJson("https://data.rcsb.org/graphql", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query, variables: { id: normalized } }),
-      }, signal));
-      const data = record(graph.data);
-      const graphEntry = record(data.entry);
-      const entities = Array.isArray(graphEntry.polymer_entities) ? graphEntry.polymer_entities.map(record) : [];
-      const uniprot = entities.flatMap((entity) => {
-        const identifiers = record(entity.rcsb_polymer_entity_container_identifiers);
-        return Array.isArray(identifiers.reference_sequence_identifiers) ? identifiers.reference_sequence_identifiers.map(record) : [];
-      }).find((identifier) => String(identifier.database_name).toUpperCase() === "UNIPROT");
-      const accessionId = typeof uniprot?.database_accession === "string" ? uniprot.database_accession : null;
-      if (accessionId) {
-        const protein = record(await fetchJson(`https://rest.uniprot.org/uniprotkb/${encodeURIComponent(accessionId)}.json`, {}, signal));
-        const description = record(protein.proteinDescription);
-        const recommended = record(description.recommendedName);
-        const fullName = record(recommended.fullName);
-        const organism = record(protein.organism);
-        const proteinName = typeof fullName.value === "string" ? fullName.value : accessionId;
-        const organismName = typeof organism.scientificName === "string" ? organism.scientificName : "unknown organism";
-        parts.push(`UniProt ${accessionId}: ${proteinName}; organism: ${organismName}.`);
-        citations.push({ id: `uniprot-${accessionId}`, title: proteinName, publisher: "UniProt", url: `https://www.uniprot.org/uniprotkb/${encodeURIComponent(accessionId)}/entry`, locator: accessionId, retrievedAt: now });
-      }
-    } catch {
-      // RCSB evidence remains usable when mapping or UniProt is unavailable.
-    }
-
-    const evidence = { context: parts.join(" "), citations };
-    await service.from("structure_metadata").upsert({
-      pdb_id: normalized, title, deposition_date: typeof accession.deposit_date === "string" ? accession.deposit_date.slice(0, 10) : null,
-      release_date: typeof accession.initial_release_date === "string" ? accession.initial_release_date.slice(0, 10) : null,
-      experimental_method: method, resolution, summary: evidence,
-      cached_at: now, expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000).toISOString(),
-    });
-    return evidence;
-  } catch {
-    return { context: "", citations: [] };
-  }
-}
-
 async function createEmbedding(message: string): Promise<number[] | null> {
   try {
     const runtime = (globalThis as unknown as {
       Supabase?: { ai?: { Session: new (model: string) => { run: (text: string, options: object) => Promise<number[]> } } };
     }).Supabase;
     if (!runtime?.ai?.Session) return null;
-    return await new runtime.ai.Session("gte-small").run(message, { mean_pool: true, normalize: true });
+    const embedding = await new runtime.ai.Session("gte-small").run(message.slice(0, 1_200), { mean_pool: true, normalize: true });
+    return Array.isArray(embedding) && embedding.length === 384 && embedding.every(Number.isFinite) ? embedding : null;
   } catch {
     return null;
   }
@@ -138,6 +72,15 @@ function promptFor(input: {
   const context = input.chunks.map((chunk, index) => `[S${index + 1}] ${chunk.title}${chunk.locator ? ` — ${chunk.locator}` : ""}\n${chunk.content}`).join("\n\n");
   const history = input.history.map((message) => `${message.sender}: ${message.content}`).join("\n");
   return `You are BioFold's scientific assistant. Distinguish observed, calculated, heuristic and unavailable evidence. Never claim molecular simulation, stability prediction, docking, clinical effect, or coordinate mutation. Use only the supplied project snapshot and retrieved sources. If proposing a scene action, use at most three of the eight audited commands and valid narrow inputs. A proposal is never executed automatically. Do not invent citations; citations are attached by the server.\n\nProject snapshot:\n${JSON.stringify(input.snapshot).slice(0, 12_000)}\n\nRecent conversation:\n${history.slice(-8_000)}\n\nRCSB/UniProt context:\n${input.externalContext || "Unavailable for this request."}\n\nCurated sources:\n${context.slice(0, 12_000)}\n\nUser question:\n${input.question}`;
+}
+
+async function releaseClaim(service: ReturnType<typeof createClient>, userId: string, requestId: string, message: string, durationMs: number, status: "failed" | "cancelled" = "failed") {
+  await service.rpc("finalize_assistant_request", {
+    p_request_id: requestId, p_user_id: userId, p_status: status, p_provider_called: false,
+    p_provider_request_id: null, p_model: assistantModel, p_prompt_tokens: null,
+    p_completion_tokens: null, p_total_tokens: null, p_cost_usd: null, p_duration_ms: durationMs,
+    p_error_message: message, p_assistant_message_id: null, p_content: null, p_citations: [], p_proposals: [],
+  });
 }
 
 Deno.serve(async (request) => {
@@ -157,9 +100,9 @@ Deno.serve(async (request) => {
 
   const url = Deno.env.get("SUPABASE_URL");
   const publicKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const serviceKey = Deno.env.get("SUPABASE_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const openRouterKey = Deno.env.get("OPENROUTER_API_KEY");
-  const model = Deno.env.get("OPENROUTER_MODEL");
+  const model = assistantModel;
   if (!url || !publicKey || !serviceKey) return failure(503, origin, "MODEL_UNAVAILABLE", "Assistant persistence is not configured.", true);
 
   const userClient = createClient(url, publicKey, { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } });
@@ -171,103 +114,119 @@ Deno.serve(async (request) => {
   const { data: project, error: projectError } = await userClient.from("projects").select("id,snapshot,active_pdb_id").eq("id", input.projectId).maybeSingle();
   if (projectError || !project) return failure(404, origin, "PROJECT_NOT_FOUND", "The project does not exist or is not accessible.");
 
-  const { data: previous } = await service.from("ai_requests").select("status,conversation_id,model,prompt_tokens,completion_tokens,total_tokens,cost_usd,duration_ms")
-    .eq("request_id", input.requestId).eq("user_id", user.id).maybeSingle();
-  if (previous?.status === "running") return failure(409, origin, "CONFLICT", "This assistant request is already running.", true);
-  if (previous?.status === "completed" && previous.conversation_id) {
-    const { data: stored } = await service.from("messages").select("id,content,citations,proposals").eq("conversation_id", previous.conversation_id)
-      .eq("request_id", input.requestId).eq("sender", "assistant").maybeSingle();
-    if (stored) return streamResponse(origin, [
-      sse("meta", { requestId: input.requestId, conversationId: previous.conversation_id, assistantMessageId: stored.id }),
-      sse("delta", { text: stored.content }),
-      sse("citations", { citations: stored.citations ?? [] }),
-      sse("proposals", { proposals: stored.proposals ?? [] }),
-      sse("usage", { usage: { model: previous.model, promptTokens: previous.prompt_tokens, completionTokens: previous.completion_tokens, totalTokens: previous.total_tokens, ...(previous.cost_usd == null ? {} : { costUsd: Number(previous.cost_usd) }), ...(previous.duration_ms == null ? {} : { durationMs: previous.duration_ms }) } }),
-      sse("done", { interrupted: false }),
-    ]);
-  }
-
   let conversationId = input.conversationId;
-  let createdConversation = false;
   if (conversationId) {
     const { data: conversation } = await userClient.from("conversations").select("id").eq("id", conversationId).eq("project_id", input.projectId).maybeSingle();
     if (!conversation) return failure(404, origin, "PROJECT_NOT_FOUND", "The conversation is not part of this project.");
-  } else {
-    const { data: conversation, error } = await service.from("conversations").insert({ project_id: input.projectId, title: input.message.slice(0, 80) }).select("id").single();
-    if (error || !conversation) return failure(503, origin, "MODEL_UNAVAILABLE", "The conversation could not be created.", true);
-    conversationId = conversation.id;
-    createdConversation = true;
   }
 
-  const { error: claimError } = await service.from("ai_requests").insert({
-    project_id: input.projectId, conversation_id: conversationId, user_id: user.id,
-    request_id: input.requestId, model: model ?? "unconfigured", status: "running",
+  const { data: claimRows, error: claimError } = await service.rpc("claim_assistant_request", {
+    p_project_id: input.projectId, p_user_id: user.id, p_request_id: input.requestId,
+    p_message: input.message, p_conversation_id: conversationId ?? null, p_model: model,
+    p_daily_budget_usd: positiveSetting("BIOFOLD_USER_DAILY_BUDGET_USD", 1),
+    p_reservation_usd: positiveSetting("BIOFOLD_REQUEST_RESERVE_USD", 0.05),
   });
-  if (claimError) {
-    if (createdConversation) await service.from("conversations").delete().eq("id", conversationId);
-    return failure(409, origin, "CONFLICT", "This request identifier has already been used.", true);
+  if (claimError) return failure(503, origin, "MODEL_UNAVAILABLE", "Assistant admission control is unavailable.", true);
+  const claim = (Array.isArray(claimRows) ? claimRows[0] : claimRows) as {
+    allowed?: boolean; status?: string; error_code?: string | null; ai_request_id?: string | null;
+    conversation_id?: string | null;
+  } | null;
+  if (!claim) return failure(503, origin, "MODEL_UNAVAILABLE", "Assistant admission control returned no result.", true);
+  if (claim.status === "completed") {
+    const { data: previous } = await service.from("ai_requests").select("conversation_id,model,prompt_tokens,completion_tokens,total_tokens,cost_usd,duration_ms")
+      .eq("request_id", input.requestId).eq("user_id", user.id).maybeSingle();
+    if (previous?.conversation_id) {
+      const { data: stored } = await service.from("messages").select("id,content,citations,proposals").eq("conversation_id", previous.conversation_id).eq("request_id", input.requestId).eq("sender", "assistant").maybeSingle();
+      if (stored) {
+        const events = [sse("meta", { requestId: input.requestId, conversationId: previous.conversation_id, assistantMessageId: stored.id }), sse("delta", { text: stored.content }), sse("citations", { citations: stored.citations ?? [] }), sse("proposals", { proposals: stored.proposals ?? [] })];
+        if (previous.prompt_tokens != null && previous.completion_tokens != null && previous.total_tokens != null) events.push(sse("usage", { usage: { model: previous.model, promptTokens: previous.prompt_tokens, completionTokens: previous.completion_tokens, totalTokens: previous.total_tokens, ...(previous.cost_usd == null ? {} : { costUsd: Number(previous.cost_usd) }), ...(previous.duration_ms == null ? {} : { durationMs: previous.duration_ms }) } }));
+        events.push(sse("done", { interrupted: false }));
+        logAssistantRequest(input.requestId, "replayed", startedAt, { conversationId: previous.conversation_id });
+        return streamResponse(origin, events);
+      }
+    }
+    return failure(503, origin, "STREAM_FAILED", "The completed response could not be replayed.", true);
+  }
+  if (!claim.allowed) {
+    logAssistantRequest(input.requestId, claim.status ?? "rejected", startedAt, { errorCode: claim.error_code ?? "CONFLICT" });
+    if (claim.error_code === "RATE_LIMITED") return failure(429, origin, "RATE_LIMITED", "Too many assistant requests. Please wait one minute.", true);
+    if (claim.error_code === "BUDGET_EXCEEDED") return failure(402, origin, "BUDGET_EXCEEDED", "The free daily Assistant limit has been reached. It resets at 00:00 UTC tomorrow.");
+    return failure(409, origin, "CONFLICT", "This request identifier is active or has already failed. Retry with a new requestId.", true);
   }
 
-  const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString();
-  const { count } = await service.from("ai_requests").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", oneMinuteAgo);
-  if ((count ?? 0) > 6) {
-    await service.from("ai_requests").update({ status: "rate_limited", duration_ms: Date.now() - startedAt }).eq("request_id", input.requestId).eq("user_id", user.id);
-    return failure(429, origin, "RATE_LIMITED", "Too many assistant requests. Please wait one minute.", true);
+  conversationId = claim.conversation_id ?? conversationId;
+  if (!conversationId) {
+    await releaseClaim(service, user.id, input.requestId, "Admission did not return a conversation.", Date.now() - startedAt);
+    return failure(503, origin, "MODEL_UNAVAILABLE", "The conversation could not be created.", true);
   }
 
   const assistantMessageId = crypto.randomUUID();
   try {
-    const { error: userMessageError } = await service.from("messages").insert({
-      conversation_id: conversationId, request_id: input.requestId, sender: "user", content: input.message,
-    });
-    if (userMessageError) throw userMessageError;
-    if (!openRouterKey || !model) throw new Error("OpenRouter is not configured for this environment.");
+    if (!openRouterKey) throw new Error("OpenRouter is not configured for this environment.");
 
-    const embedding = await createEmbedding(input.message);
+    const externalSignal = AbortSignal.any([request.signal, AbortSignal.timeout(2_500)]);
+    const [embedding, historyResult, external] = await Promise.all([
+      createEmbedding(input.message),
+      service.from("messages").select("sender,content").eq("conversation_id", conversationId).order("created_at", { ascending: false }).limit(10),
+      loadExternalEvidence(service, project.active_pdb_id, input.requestId, externalSignal).catch((error) => {
+        if (request.signal.aborted) throw error;
+        return { context: "", citations: [] };
+      }),
+    ]);
     const { data: chunks, error: searchError } = await service.rpc("hybrid_search_knowledge", {
-      query_text: input.message, query_embedding: embedding, match_count: 6,
+      query_text: input.message, query_embedding: embedding, match_count: 6, max_semantic_distance: 0.35,
     });
     if (searchError) throw searchError;
-    const { data: history } = await service.from("messages").select("sender,content").eq("conversation_id", conversationId).order("created_at", { ascending: false }).limit(10);
-    const external = await loadExternalEvidence(service, project.active_pdb_id, request.signal);
+    const history = historyResult.data;
     const retrieved = (chunks ?? []) as Array<{ chunk_id: string; title: string; content: string; locator: string | null; publisher: Citation["publisher"]; url: string; retrieved_at: string }>;
     const citations: Citation[] = [...external.citations, ...retrieved.map((chunk) => ({
       id: chunk.chunk_id, title: chunk.title, publisher: chunk.publisher, url: chunk.url,
       ...(chunk.locator ? { locator: chunk.locator } : {}), retrievedAt: new Date(chunk.retrieved_at).toISOString(),
     }))].filter((citation, index, all) => all.findIndex((candidate) => candidate.url === citation.url) === index);
-    const generated = await requestOpenRouter({
-      apiKey: openRouterKey, model, signal: request.signal, siteUrl: Deno.env.get("OPENROUTER_SITE_URL"),
+    const body = createValidatedAssistantSseStream({
+      requestId: input.requestId,
+      conversationId,
+      assistantMessageId,
+      model,
+      apiKey: openRouterKey,
+      siteUrl: Deno.env.get("OPENROUTER_SITE_URL"),
       prompt: promptFor({ question: input.message, snapshot: project.snapshot, history: (history ?? []).reverse(), chunks: retrieved, externalContext: external.context }),
+      citations,
+      signal: request.signal,
+      onProviderCalled: async () => {
+        const { error } = await service.from("ai_requests").update({ provider_called: true }).eq("request_id", input.requestId).eq("user_id", user.id).eq("status", "running");
+        if (error) throw error;
+      },
+      persist: async (generated, durationMs) => {
+        const proposals = generated.proposals as EdgeCommandProposal[];
+        const { error } = await service.rpc("finalize_assistant_request", {
+          p_request_id: input.requestId, p_user_id: user.id, p_status: "completed", p_provider_called: true,
+          p_provider_request_id: generated.providerRequestId ?? null, p_model: model,
+          p_prompt_tokens: generated.usage?.promptTokens ?? null, p_completion_tokens: generated.usage?.completionTokens ?? null,
+          p_total_tokens: generated.usage?.totalTokens ?? null, p_cost_usd: generated.usage?.costUsd ?? null,
+          p_duration_ms: durationMs, p_error_message: null, p_assistant_message_id: assistantMessageId,
+          p_content: generated.answer, p_citations: citations, p_proposals: proposals,
+        });
+        if (error) throw error;
+      },
+      interrupt: async ({ cancelled, providerCalled, providerRequestId, durationMs }) => {
+        const { error } = await service.rpc("finalize_assistant_request", {
+          p_request_id: input.requestId, p_user_id: user.id, p_status: cancelled ? "cancelled" : "failed",
+          p_provider_called: providerCalled, p_provider_request_id: providerRequestId ?? null, p_model: model,
+          p_prompt_tokens: null, p_completion_tokens: null, p_total_tokens: null, p_cost_usd: null,
+          p_duration_ms: durationMs, p_error_message: cancelled ? "Request cancelled." : "Provider or validation failure.",
+          p_assistant_message_id: null, p_content: null, p_citations: [], p_proposals: [],
+        });
+        if (error) throw error;
+      },
     });
-    if (request.signal.aborted) throw new DOMException("The request was cancelled.", "AbortError");
-
-    const proposals = generated.proposals as EdgeCommandProposal[];
-    const durationMs = Date.now() - startedAt;
-    const { error: assistantMessageError } = await service.from("messages").insert({
-      id: assistantMessageId, conversation_id: conversationId, request_id: input.requestId,
-      sender: "assistant", content: generated.answer, citations, proposals,
+    return new Response(body, {
+      headers: { ...cors(origin), "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" },
     });
-    if (assistantMessageError) throw assistantMessageError;
-    await service.from("ai_requests").update({
-      model, prompt_tokens: generated.usage.promptTokens, completion_tokens: generated.usage.completionTokens,
-      total_tokens: generated.usage.totalTokens, cost_usd: generated.usage.costUsd ?? null,
-      duration_ms: durationMs, status: "completed",
-    }).eq("request_id", input.requestId).eq("user_id", user.id);
-
-    const words = generated.answer.match(/\S+\s*/g) ?? [generated.answer];
-    const deltas: string[] = [];
-    for (let index = 0; index < words.length; index += 12) deltas.push(words.slice(index, index + 12).join(""));
-    return streamResponse(origin, [
-      sse("meta", { requestId: input.requestId, conversationId, assistantMessageId }),
-      ...deltas.map((text) => sse("delta", { text })),
-      sse("citations", { citations }),
-      sse("proposals", { proposals }),
-      sse("usage", { usage: { model, ...generated.usage, durationMs } }),
-      sse("done", { interrupted: false }),
-    ]);
   } catch (error) {
     const cancelled = request.signal.aborted || (error instanceof DOMException && error.name === "AbortError");
-    await service.from("ai_requests").update({ status: cancelled ? "cancelled" : "failed", duration_ms: Date.now() - startedAt }).eq("request_id", input.requestId).eq("user_id", user.id);
+    await releaseClaim(service, user.id, input.requestId, cancelled ? "Request cancelled." : "Retrieval failed before provider call.", Date.now() - startedAt, cancelled ? "cancelled" : "failed");
+    logAssistantRequest(input.requestId, cancelled ? "cancelled_before_provider" : "failed_before_provider", startedAt);
     return failure(cancelled ? 499 : 503, origin, cancelled ? "CANCELLED" : "MODEL_UNAVAILABLE",
       cancelled ? "The assistant request was cancelled." : "The scientific assistant is temporarily unavailable.", !cancelled);
   }
