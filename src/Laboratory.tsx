@@ -808,7 +808,7 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
                   <div className="bf-copilot-quota-card">
                     <div className="bf-quota-row">
                       <span>Model:</span>
-                      <strong>GPT-5-mini</strong>
+                      <strong>GLM 5.2 (Free)</strong>
                     </div>
                     <div className="bf-quota-row">
                       <span>Daily Budget:</span>

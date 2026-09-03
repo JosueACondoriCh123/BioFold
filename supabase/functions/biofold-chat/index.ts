@@ -5,7 +5,7 @@ import { createValidatedAssistantSseStream } from "../_shared/assistantSseStream
 import { loadExternalEvidence, type Citation } from "../_shared/externalEvidence.ts";
 
 const localOrigins = ["http://127.0.0.1:4173", "http://localhost:4173", "http://127.0.0.1:5173", "http://localhost:5173"];
-const assistantModel = "openai/gpt-5-mini";
+const assistantModel = Deno.env.get("BIOFOLD_ASSISTANT_MODEL") ?? "z-ai/glm-5.2:free";
 const encoder = new TextEncoder();
 
 function positiveSetting(name: string, fallback: number) {
