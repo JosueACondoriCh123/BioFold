@@ -11,6 +11,7 @@ import "./integration/integration.css";
 import "./platform.css";
 
 const Laboratory = lazy(() => import("./Laboratory"));
+const DefaultVisionStudioPage = lazy(() => import("./pages/VisionStudioPage"));
 
 function RecoveryGate({ auth, children }: { auth: AuthContextValue; children: ReactNode }) {
   const { state } = auth;
@@ -115,6 +116,7 @@ export default function App({ auth, pages }: { auth: AuthContextValue; pages: Pl
 
   const { LandingPage, LoginPage, SignupPage, VerifyEmailPage, ForgotPasswordPage,
     AuthCallbackPage, ResetPasswordPage, DashboardPage, AccountPage, NotFoundPage } = pages;
+  const VisionStudioPage = pages.VisionStudioPage ?? DefaultVisionStudioPage;
 
   return <ErrorBoundary>
     {userId && location.pathname.startsWith("/app") && !laboratoryActive && <div className="platform-root"><WorkspaceNav /></div>}
@@ -129,6 +131,7 @@ export default function App({ auth, pages }: { auth: AuthContextValue; pages: Pl
         <Route path="/reset-password" element={<RecoveryGate auth={auth}><ResetPasswordPage /></RecoveryGate>} />
         <Route path="/app" element={protect(<DashboardPage />)} />
         <Route path="/app/lab" element={protect(null)} />
+        <Route path="/app/vision" element={protect(<VisionStudioPage />)} />
         <Route path="/app/account" element={protect(<AccountPage />)} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

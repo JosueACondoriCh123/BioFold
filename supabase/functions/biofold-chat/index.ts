@@ -4,7 +4,14 @@ import { parseEdgeAssistantRequest, sse, type EdgeCommandProposal } from "../_sh
 import { createValidatedAssistantSseStream } from "../_shared/assistantSseStream.ts";
 import { loadExternalEvidence, type Citation } from "../_shared/externalEvidence.ts";
 
-const localOrigins = ["http://127.0.0.1:4173", "http://localhost:4173", "http://127.0.0.1:5173", "http://localhost:5173"];
+const localOrigins = [
+  "http://127.0.0.1:4173",
+  "http://localhost:4173",
+  "http://127.0.0.1:5173",
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "https://biofold-orpin.vercel.app",
+];
 const assistantModel = Deno.env.get("BIOFOLD_ASSISTANT_MODEL") ?? "z-ai/glm-5.2:free";
 const encoder = new TextEncoder();
 
@@ -22,12 +29,19 @@ function logAssistantRequest(requestId: string, status: string, startedAt: numbe
 
 function origins() {
   const configured = Deno.env.get("BIOFOLD_ALLOWED_ORIGINS")?.split(",").map((item) => item.trim()).filter(Boolean);
-  return new Set(configured?.length ? configured : localOrigins);
+  return new Set(configured?.length ? [...configured, "https://biofold-orpin.vercel.app"] : localOrigins);
+}
+
+function isOriginAllowed(origin: string | null): boolean {
+  if (!origin) return false;
+  if (origins().has(origin)) return true;
+  if (/^https:\/\/biofold.*\.vercel\.app$/.test(origin)) return true;
+  return false;
 }
 
 function cors(origin: string | null) {
   return {
-    ...(origin && origins().has(origin) ? { "Access-Control-Allow-Origin": origin } : {}),
+    ...(origin && isOriginAllowed(origin) ? { "Access-Control-Allow-Origin": origin } : {}),
     "Access-Control-Allow-Headers": "authorization, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     Vary: "Origin",

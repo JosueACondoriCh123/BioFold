@@ -26,5 +26,7 @@ export interface AuthContextValue { state: AuthSnapshot; actions: AuthActions }
 export const PAGE_NAMES = [
   "LandingPage", "LoginPage", "SignupPage", "VerifyEmailPage", "ForgotPasswordPage",
   "AuthCallbackPage", "ResetPasswordPage", "DashboardPage", "AccountPage", "NotFoundPage",
+  "VisionStudioPage",
 ] as const;
-export type PlatformPages = Record<typeof PAGE_NAMES[number], ComponentType>;
+export type PlatformPages = Partial<Record<typeof PAGE_NAMES[number], ComponentType>> &
+  Record<"LandingPage" | "LoginPage" | "SignupPage" | "VerifyEmailPage" | "ForgotPasswordPage" | "AuthCallbackPage" | "ResetPasswordPage" | "DashboardPage" | "AccountPage" | "NotFoundPage", ComponentType>;

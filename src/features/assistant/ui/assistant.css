@@ -13,6 +13,15 @@
   z-index: 10;
 }
 
+.bf-inspector-panel.inspector-panel-inner,
+.bf-inspector-panel.is-fullscreen {
+  width: 100% !important;
+  max-width: 100% !important;
+  border-left: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
 .bf-inspector-panel.is-collapsed {
   width: 52px;
 }
@@ -534,6 +543,22 @@
   flex-direction: column;
   gap: 16px;
   min-height: 0;
+}
+
+.bf-copilot-main .bf-chat-messages-container {
+  padding: 24px 32px;
+  align-items: center;
+}
+
+.bf-copilot-main .bf-chat-messages-container > * {
+  max-width: 960px;
+  width: 100%;
+}
+
+.bf-copilot-main .bf-chat-input-container {
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
 }
 
 .bf-chat-empty-state {

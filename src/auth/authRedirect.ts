@@ -132,12 +132,12 @@ export function stripAuthParams(url: string): string {
  * provided default, so auth flows can never bounce the user to another origin.
  */
 export function sanitizeReturnPath(value: unknown, fallback = "/app"): string {
-  if (typeof value !== "string" || !/^\/app(?:\/lab|\/account)?\/?(?:\?|$)/.test(value)
+  if (typeof value !== "string" || !/^\/app(?:\/lab|\/account|\/vision)?\/?(?:\?|$)/.test(value)
     || value.includes("\\") || Array.from(value).some(char => char.charCodeAt(0) <= 32)) return fallback;
   try {
     const url = new URL(value, "https://biofold.invalid");
     const path = url.pathname.replace(/\/$/, "");
-    if (!["/app", "/app/lab", "/app/account"].includes(path)) return fallback;
+    if (!["/app", "/app/lab", "/app/account", "/app/vision"].includes(path)) return fallback;
     const pdb = url.searchParams.get("pdb");
     return path === "/app/lab" && pdb && /^[a-z0-9]{4}$/i.test(pdb)
       ? `${path}?pdb=${pdb.toUpperCase()}` : path;

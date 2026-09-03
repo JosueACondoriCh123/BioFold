@@ -8,7 +8,7 @@ export function Brand({ to = "/" }: { to?: string }) {
 
 export function WorkspaceNav() {
   return <header className="bf-workspace-header"><Brand to="/app" /><nav aria-label="Workspace navigation">
-    <NavLink to="/app" end>Home</NavLink><NavLink to="/app/lab">Laboratory</NavLink><NavLink to="/app/account">Account</NavLink>
+    <NavLink to="/app" end>Home</NavLink><NavLink to="/app/lab">Laboratory</NavLink><NavLink to="/app/vision">Multimodal Vision</NavLink><NavLink to="/app/account">Account</NavLink>
   </nav><span className="bf-header-note"><FlaskConical size={14} aria-hidden="true" /> Molecular workspace</span></header>;
 }
 

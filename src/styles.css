@@ -594,6 +594,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  transition: grid-template-columns 0.2s ease;
+}
+
+.bf-copilot-screen-layout.is-fullwidth {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .bf-copilot-sidebar {
@@ -611,15 +616,63 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   display: flex;
   flex-direction: column;
   height: 100%;
+  width: 100%;
   min-height: 0;
   overflow: hidden;
   padding: 0;
+  background: var(--surface-bg, #0b1714);
+  border: 1px solid var(--line, #24352e);
+  border-radius: var(--radius, 12px);
 }
 
-.bf-copilot-main .inspector-panel {
+.bf-copilot-top-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid var(--line, #24352e);
+  flex-shrink: 0;
+}
+
+.bf-copilot-sidebar-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line, #24352e);
+  color: var(--muted, #aab9b3);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bf-copilot-sidebar-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-color: #5ccfb5;
+}
+
+.bf-copilot-top-target-badge {
+  font-size: 12px;
+  color: var(--muted, #aab9b3);
+}
+
+.bf-copilot-top-target-badge strong {
+  color: #5ccfb5;
+  font-family: monospace;
+}
+
+.bf-copilot-main .bf-assistant-chat-pane,
+.bf-copilot-main .bf-inspector-panel {
   border: none;
   border-radius: 0;
   background: transparent;
+  width: 100% !important;
+  max-width: 100% !important;
   height: 100%;
 }
 

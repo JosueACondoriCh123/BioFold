@@ -474,6 +474,20 @@ class MolecularViewerPort {
       atom: ref.atomName,
     };
   }
+
+  capturePngURI(): string | null {
+    if (!this.viewer) return null;
+    try {
+      this.viewer.render();
+      if (typeof this.viewer.pngURI === "function") {
+        return this.viewer.pngURI();
+      }
+      const canvas = this.viewer.getCanvas?.();
+      return canvas ? canvas.toDataURL("image/png") : null;
+    } catch {
+      return null;
+    }
+  }
 }
 
 export const viewerPort = new MolecularViewerPort();

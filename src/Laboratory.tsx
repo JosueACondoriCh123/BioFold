@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import {
   Activity,
   AlertTriangle,
   Atom,
   Bot,
+  Camera,
   Check,
   ChevronRight,
   CircleDot,
@@ -20,6 +21,8 @@ import {
   Microscope,
   Minus,
   Palette,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   RefreshCcw,
   RotateCw,
@@ -43,6 +46,7 @@ import { captureWorkspaceSnapshot } from "./core/workspaceSnapshot";
 import { workspaceSession } from "./core/workspaceSession";
 import { getAssistantServices } from "./assistant/assistantService";
 import { InspectorPanel } from "./features/assistant/ui";
+import { AssistantChat } from "./features/assistant/ui/AssistantChat";
 import { MolecularExplorer } from "./features/explorer/MolecularExplorer";
 import { MutationWorkbench } from "./features/workbench/MutationWorkbench";
 import { AuditHistoryView } from "./features/audit/AuditHistoryView";
@@ -220,7 +224,22 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
   const cameraTimerRef = useRef<number | null>(null);
 
   const [activeScreen, setActiveScreen] = useState<"studio" | "explorer" | "workbench" | "copilot" | "audit">("studio");
+  const [isCopilotSidebarOpen, setIsCopilotSidebarOpen] = useState(false);
   const currentCatalogItem = useMemo(() => getCatalogItem(state.structure?.id ?? pdbId), [state.structure?.id, pdbId]);
+  const navigate = useNavigate();
+
+  const handleSnapshotToVision = () => {
+    try {
+      const snapshot = viewerPort.capturePngURI();
+      if (snapshot) {
+        sessionStorage.setItem("biofold_pending_vision_snapshot", snapshot);
+        sessionStorage.setItem("biofold_pending_vision_target", state.structure?.id ?? pdbId);
+      }
+    } catch {
+      /* ignore */
+    }
+    navigate("/app/vision");
+  };
 
   useEffect(() => {
     if (activeScreen === "studio") {
@@ -501,6 +520,14 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
             onRetry={() => setProjectReloadToken((value) => value + 1)}
             className="lab-persistence-indicator"
           />}
+          <Link
+            className="icon-button bf-topbar-vision-btn"
+            to="/app/vision"
+            title="Multimodal AI Vision Studio (MiniMax M3 / Vision Analysis)"
+          >
+            <Sparkles size={15} />
+            <span>Multimodal AI</span>
+          </Link>
           <Link className="icon-button account-link" to="/app/account" aria-label="Account"><UserRound size={18} aria-hidden="true" /><span>Account</span></Link>
         </div>
       </header>
@@ -687,7 +714,22 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
 
           {state.loading && <div className="loading-overlay"><div className="loading-orbit"><Atom size={27} /><i /><i /></div><strong>Resolving molecular coordinates</strong><span>Parsing mmCIF and preparing the shared 3D scene…</span></div>}
           {!state.loading && !state.structure && <div className="empty-state"><div><Atom size={34} /></div><h2>Start with a molecular structure</h2><p>Load a PDB ID manually or ask an agent to prepare the workspace.</p><button onClick={() => loadStructure("1CRN")}><Sparkles size={16} /> Load the 1CRN demo</button></div>}
-          <div className="viewer-footer"><span><CircleDot size={13} /> Drag to rotate · scroll to zoom · right-drag to translate</span><span className="render-badge"><Zap size={12} /> WebGL live</span></div>
+          <div className="viewer-footer">
+            <span><CircleDot size={13} /> Drag to rotate · scroll to zoom · right-drag to translate</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <button
+                type="button"
+                className="bf-snapshot-vision-btn"
+                onClick={handleSnapshotToVision}
+                disabled={!state.structure}
+                title="Capture 3D scene and analyze in Multimodal Vision Studio"
+              >
+                <Camera size={13} />
+                <span>Analyze Scene</span>
+              </button>
+              <span className="render-badge"><Zap size={12} /> WebGL live</span>
+            </div>
+          </div>
         </section>
 
         <InspectorPanel
@@ -773,97 +815,114 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
           </div>
         )}
 
-        {/* Screen 4: Research Copilot Screen (Full Width 2-Column Layout) */}
+        {/* Screen 4: Research Copilot Screen (Full Screen Immersive Workspace) */}
         {activeScreen === "copilot" && (
           <div className="lab-full-screen-container">
-            <div className="bf-copilot-screen-layout" role="region" aria-label="Research Copilot Workspace">
-              <aside className="bf-copilot-sidebar panel" aria-label="Copilot Context and Knowledge">
-                <div className="panel-title">
-                  <div className="panel-title-icon">
-                    <Bot size={18} />
+            <div
+              className={`bf-copilot-screen-layout ${!isCopilotSidebarOpen ? "is-fullwidth" : ""}`}
+              role="region"
+              aria-label="Research Copilot Workspace"
+            >
+              {isCopilotSidebarOpen && (
+                <aside className="bf-copilot-sidebar panel" aria-label="Copilot Context and Knowledge">
+                  <div className="panel-title">
+                    <div className="panel-title-icon">
+                      <Bot size={18} />
+                    </div>
+                    <div>
+                      <span>AI AGENT COPILOT</span>
+                      <h2>Research Copilot</h2>
+                    </div>
                   </div>
-                  <div>
-                    <span>AI AGENT COPILOT</span>
-                    <h2>Research Copilot</h2>
+
+                  <section className="control-section">
+                    <div className="section-label">
+                      <span>AI Model & Quota</span>
+                      <small>OpenRouter</small>
+                    </div>
+                    <div className="bf-copilot-quota-card">
+                      <div className="bf-quota-row">
+                        <span>Model:</span>
+                        <strong>GLM 5.2 (Free)</strong>
+                      </div>
+                      <div className="bf-quota-row">
+                        <span>Daily Budget:</span>
+                        <strong style={{ color: "#5ccfb5" }}>$1.00 USD</strong>
+                      </div>
+                      <div className="bf-quota-row">
+                        <span>Rate Window:</span>
+                        <span>6 req / 60s</span>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="control-section">
+                    <div className="section-label">
+                      <span>Grounded RAG Sources</span>
+                      <small>Live Graph</small>
+                    </div>
+                    <div className="bf-rag-sources-list">
+                      <div className="bf-rag-source-item">
+                        <span className="live-dot" />
+                        <span>RCSB PDB REST / GraphQL</span>
+                      </div>
+                      <div className="bf-rag-source-item">
+                        <span className="live-dot" />
+                        <span>UniProtKB Reference Data</span>
+                      </div>
+                      <div className="bf-rag-source-item">
+                        <span className="live-dot" />
+                        <span>BioFold Vector Corpus (384d)</span>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="control-section">
+                    <div className="section-label">
+                      <span>Active 3D Context</span>
+                      <small>Pinned</small>
+                    </div>
+                    <div className="bf-current-target-card">
+                      <div className="bf-target-id">{state.structure?.id ?? pdbId}</div>
+                      <div className="bf-target-name">{currentCatalogItem?.name ?? "Molecular structure"}</div>
+                      <button
+                        type="button"
+                        className="bf-return-studio-btn"
+                        onClick={() => setActiveScreen("studio")}
+                        style={{ marginTop: "6px" }}
+                      >
+                        <Eye size={14} />
+                        <span>Inspect in 3D Studio</span>
+                      </button>
+                    </div>
+                  </section>
+                </aside>
+              )}
+
+              <main className="bf-copilot-main panel" aria-label="Copilot Conversation">
+                <div className="bf-copilot-top-controls">
+                  <button
+                    type="button"
+                    className="bf-copilot-sidebar-toggle-btn"
+                    onClick={() => setIsCopilotSidebarOpen(!isCopilotSidebarOpen)}
+                    title={isCopilotSidebarOpen ? "Maximize chat (hide sidebar)" : "Show scientific context panel"}
+                  >
+                    {isCopilotSidebarOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+                    <span>{isCopilotSidebarOpen ? "Full screen chat" : "Show context panel"}</span>
+                  </button>
+                  <div className="bf-copilot-top-target-badge">
+                    Active Molecule: <strong>{state.structure?.id ?? pdbId}</strong>
+                    {currentCatalogItem?.name && <span> · {currentCatalogItem.name}</span>}
                   </div>
                 </div>
 
-                <section className="control-section">
-                  <div className="section-label">
-                    <span>AI Model & Quota</span>
-                    <small>OpenRouter</small>
-                  </div>
-                  <div className="bf-copilot-quota-card">
-                    <div className="bf-quota-row">
-                      <span>Model:</span>
-                      <strong>GLM 5.2 (Free)</strong>
-                    </div>
-                    <div className="bf-quota-row">
-                      <span>Daily Budget:</span>
-                      <strong style={{ color: "#5ccfb5" }}>$1.00 USD</strong>
-                    </div>
-                    <div className="bf-quota-row">
-                      <span>Rate Window:</span>
-                      <span>6 req / 60s</span>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="control-section">
-                  <div className="section-label">
-                    <span>Grounded RAG Sources</span>
-                    <small>Live Graph</small>
-                  </div>
-                  <div className="bf-rag-sources-list">
-                    <div className="bf-rag-source-item">
-                      <span className="live-dot" />
-                      <span>RCSB PDB REST / GraphQL</span>
-                    </div>
-                    <div className="bf-rag-source-item">
-                      <span className="live-dot" />
-                      <span>UniProtKB Reference Data</span>
-                    </div>
-                    <div className="bf-rag-source-item">
-                      <span className="live-dot" />
-                      <span>BioFold Vector Corpus (384d)</span>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="control-section">
-                  <div className="section-label">
-                    <span>Active 3D Context</span>
-                    <small>Pinned</small>
-                  </div>
-                  <div className="bf-current-target-card">
-                    <div className="bf-target-id">{state.structure?.id ?? pdbId}</div>
-                    <div className="bf-target-name">{currentCatalogItem?.name ?? "Molecular structure"}</div>
-                    <button
-                      type="button"
-                      className="bf-return-studio-btn"
-                      onClick={() => setActiveScreen("studio")}
-                      style={{ marginTop: "6px" }}
-                    >
-                      <Eye size={14} />
-                      <span>Inspect in 3D Studio</span>
-                    </button>
-                  </div>
-                </section>
-              </aside>
-
-              <main className="bf-copilot-main panel" aria-label="Copilot Conversation">
-                <InspectorPanel
+                <AssistantChat
                   assistantClient={assistantServices.client}
                   assistantConversations={assistantServices.conversations}
-                  assistantEnabled={!assistantServices.remote || Boolean(projectId)}
+                  enabled={!assistantServices.remote || Boolean(projectId)}
                   projectId={projectId ?? "unsaved-workspace"}
-                  summary={state.summary}
-                  measurement={state.measurement}
-                  mutation={state.mutation}
-                  activityEntries={state.activity}
                   onApplyProposal={executeAssistantProposal}
-                  defaultTab="assistant"
-                  className="inspector-panel-inner"
+                  confirmedActivities={state.activity}
                 />
               </main>
             </div>
