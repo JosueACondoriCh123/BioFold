@@ -8,8 +8,8 @@ BioFold 3D bridges the gap between molecular visualization, persistent scientifi
 
 ## Architecture Overview
 
-
-
+```mermaid
+flowchart TD
     UI -->|Dispatch| CB
     WebMCP -->|Propose/Execute| CB
     AsstUI -->|Confirm Proposal (Apply)| CB
@@ -50,13 +50,32 @@ BioFold 3D bridges the gap between molecular visualization, persistent scientifi
 - **Atomic Distance & Neighborhoods:** Sub-ångström distance measurements with 3D dashed vectors and 5 Å spatial neighbor mapping.
 - **Deterministic Offline Fixtures & RCSB PDB Ingestion:** Bundled offline structures (`1CRN`, `4HHB`) and on-demand live fetching of valid 4-character mmCIF records from RCSB.
 
-### 4. Agentic WebMCP Integration
+### 4. Molecular Explorer & Catalog Navigation
+- **Curated Dataset Catalog:** Browse curated molecular structures across various categories, experimental methods (X-ray, Cryo-EM), organisms, and resolution ranges.
+- **Search & Filtering:** Search structures by PDB ID, name, or metadata, and filter by structure properties.
+- **1-Click Laboratory Loader:** Direct structure loading from the catalog into the active 3D laboratory session.
+
+### 5. Mutation Workbench & Physicochemical Delta Analysis
+- **Residue Substitution Simulation:** Select specific protein residues and propose single-point amino acid substitutions.
+- **Physicochemical Delta Calculations:** Compute shifts in charge, hydropathy, and molecular volume.
+- **5.0 Å Spatial Neighbor Mapping:** Identify surrounding residues within 5.0 Å Euclidean distance to assess spatial contact environments and potential steric disruptions.
+
+### 6. Vision Studio & High-Definition Rendering Studio (`/app/vision`)
+- **Visual Rendering Presets:** High-definition visualization presets including Publication Cartoon, Surface Density, Backbone Highlight, and Schematic Overlay.
+- **Custom Lighting & Shading:** Lighting angle controls, background modes (Dark / Light / Transparent), and visual quality tuning.
+- **Export & Studio Configuration:** Export publication-ready images and save custom rendering preset configurations for presentation and publication.
+
+### 7. Audited Event History & Provenance Stream
+- **Comprehensive Audit Trail:** Real-time event log tracking all workspace actions, user interactions, command dispatches, and agent tool executions.
+- **Evidence Tagging:** Every operation and result is classified into explicit scientific evidence levels (*Observed*, *Calculated*, *Heuristic*, *Unavailable*).
+
+### 8. Agentic WebMCP Integration
 - **Eight Imperative WebMCP Tools:** Dynamically registered via `document.modelContext.registerTool` strictly when an authenticated user opens `/app/lab`.
 - **Single Command Bus:** Human UI controls and agent tools call the exact same typed domain commands—no DOM scraping or backdoor state mutation.
 - **Explicit Scientific Evidence Labels:** Every output is tagged as *Observed* (PDB coordinates), *Calculated* (geometric measurements), *Heuristic* (physicochemical mutation comparisons), or *Unavailable*.
 - **Lifecycle & Cancellation:** WebMCP tools automatically de-register when leaving the lab, clean up worker jobs on abort signals, and gracefully fall back to human-only mode in standard browsers.
 
-### 5. Responsive Design & Accessibility
+### 9. Responsive Design & Accessibility
 - **Breakpoints:** Pixel-perfect layouts adapted for **1440px** (Desktop), **1000px** (Laptop / Tablet landscape), **720px** (Tablet portrait), and **390px** (Mobile).
 - **Accessibility:** Full keyboard navigation (`Tab`, arrow navigation for tabs, `Escape` to dismiss modals, `Enter` to send prompts), visible focus rings (`:focus-visible`), ARIA landmarks (`role="tablist"`, `role="tabpanel"`, `role="dialog"`, `role="alert"`), and `aria-live="polite"` status announcements.
 
@@ -110,7 +129,7 @@ The application will start at **`http://127.0.0.1:4173`**.
 Open your browser to `http://127.0.0.1:4173`:
 - Visit the public landing at `/`.
 - Sign in at `/login` or create an account at `/signup`.
-- Explore your dashboard at `/app` or enter the 3D viewer directly at `/app/lab`.
+- Explore your dashboard at `/app`, enter the 3D viewer directly at `/app/lab`, or open Vision Studio at `/app/vision`.
 
 ---
 
@@ -126,8 +145,9 @@ Open your browser to `http://127.0.0.1:4173`:
 | `/reset-password` | Guarded | Set new password form; only accessible via verified recovery tokens. |
 | `/auth/callback` | Public | PKCE and OAuth exchange handler that redirects to target destinations. |
 | `/app` | Authenticated | User dashboard with saved projects, persistence status, quick guides, and 1-click structure loaders. |
-| `/app/lab` | Authenticated | Live 3D molecular laboratory with 3Dmol viewer, scene controls, Inspector tabs (Results & Assistant), and WebMCP agent tools. |
-| `/app/account` | Authenticated | Profile details (name update in Supabase `user_metadata`), security notes, and sign out. |
+| `/app/lab` | Authenticated | Live 3D molecular laboratory with 3Dmol viewer, scene controls, Inspector tabs (Results & Assistant), Molecular Explorer, Mutation Workbench, Audit History, and WebMCP agent tools. |
+| `/app/vision` | Authenticated | Vision Studio for high-definition molecular rendering presets, visual styles, schematic overlays, and studio image exports. |
+| `/app/account` | Authenticated | Profile details (name update in Supabase `user_metadata`), security notes, active sessions, and sign out. |
 | `*` | Public | 404 page with quick link back to safe ground. |
 
 ---
@@ -183,10 +203,10 @@ pnpm supabase:test
 
 ### Test Coverage Highlights:
 - **`tests/data/`**: Tests for `SupabaseProjectDataAdapter`, optimistic concurrency locking (`CONFLICT`), input validation, and PostgreSQL Row-Level Security (RLS) simulation for User A, User B, and anonymous access.
-- **`tests/features/`**: Tests for `ProjectsDashboard`, `PersistenceIndicator` (`Saving`, `Saved`, `Offline`, `Conflict`, `Error`), `ProjectDialog`, `InspectorPanel`, `ResultsTab`, and `AssistantChat` (streaming, cancellation, citations, and command proposals).
+- **`tests/features/`**: Tests for `ProjectsDashboard`, `PersistenceIndicator` (`Saving`, `Saved`, `Offline`, `Conflict`, `Error`), `ProjectDialog`, `InspectorPanel`, `ResultsTab`, `AssistantChat` (streaming, cancellation, citations, and command proposals), `MolecularExplorer`, `MutationWorkbench`, `AuditHistoryView`, and `VisionStudio`.
 - **`tests/auth/`**: Complete Supabase authentication adapter tests, PKCE flows, session recovery, password update, and navigation redirects.
 - **`evals/assistant/`**: Sixteen versioned live RAG cases covering evidence levels, 1CRN/4HHB sources, and mandatory abstention for out-of-scope scientific requests.
-- **`tests/e2e/`**: Playwright browser tests verifying landing isolation (no WebGL on home), protected routes, complete auth lifecycle, private project CRUD boundary, scene preservation, and agent WebMCP interactions.
+- **`tests/e2e/`**: Playwright browser tests verifying landing isolation (no WebGL on home), protected routes, complete auth lifecycle, private project CRUD boundary, scene preservation, Vision Studio rendering, and agent WebMCP interactions.
 
 ---
 
