@@ -1,7 +1,8 @@
 # Testing the WebMCP integration
 
-Three ways to exercise the tools, from fastest to most faithful. All of them were run
-against the application on 2026-09-04; the outputs quoted here are real.
+Three ways to exercise the tools: a console harness, Chrome's native API, and automated
+regressions. The console examples below are recorded observations; automated native
+coverage is described in section 3. An emulated browser API does not prove Chrome compatibility.
 
 ## How registration actually works
 
@@ -11,14 +12,15 @@ these hold:
 - a user session is active (`workspaceSession` has a `userId`)
 - the laboratory route is the active screen
 - the 3D viewer reports `viewerReady`
-- `document.modelContext.registerTool` is a function
+- `document.modelContext.registerTool` is a function (or the legacy `navigator.modelContext` API)
 
 If the last one is missing, status becomes `unavailable` and nothing is registered. That is
 the normal state in a browser without WebMCP — and the reason method 1 below works at all.
 
 The adapter **retries every 2 seconds** while status is not `ready`, and again on window
 focus. So you can define `document.modelContext` at any moment and the tools appear within
-about a second. You do not need to inject before page load.
+two seconds. You do not need to inject before page load. The header shows the registration
+count; open its WebMCP indicator for setup instructions, registration errors and a retry button.
 
 ---
 
@@ -26,16 +28,20 @@ about a second. You do not need to inject before page load.
 
 The practical option, and the one the demo script uses. Works in ordinary Chrome.
 
-Open the laboratory, load a structure, open DevTools, and paste:
+Use this only in a browser without native WebMCP. Open the laboratory, load a structure,
+open DevTools, and paste:
 
 ```js
 const __t = new Map();
+if (document.modelContext || navigator.modelContext) throw new Error("Use the native API instead of replacing it.");
 Object.defineProperty(document, "modelContext", {
   configurable: true,
   value: {
-    registerTool: (d) => {
+    registerTool: (d, { signal } = {}) => {
+      if (signal?.aborted) return;
+      if (__t.has(d.name)) throw new Error(`Duplicate tool: ${d.name}`);
       __t.set(d.name, d);
-      return { unregister: () => __t.delete(d.name) };
+      signal?.addEventListener("abort", () => __t.delete(d.name), { once: true });
     },
   },
 });
@@ -103,10 +109,33 @@ Read the real schema instead of guessing:
 
 ```js
 mcpSchema("preview_mutation_context")
+// Every tool now includes a copyable example at inputSchema.examples[0].
+copy(JSON.stringify(mcpSchema("preview_mutation_context").examples[0], null, 2))
 ```
 
-That strictness is a feature worth showing: the contract an agent receives is the contract
-that is enforced.
+Chrome's manual form may prefill strings with the literal value `example_string`. That is a
+schema placeholder, not molecular data. Replace it with values from the loaded structure:
+
+```json
+{
+  "pdbId": "1CRN",
+  "residues": [{ "chain": "A", "residueNumber": 10 }],
+  "from": { "chain": "A", "residueNumber": 1, "atomName": "CA" },
+  "to": { "chain": "A", "residueNumber": 10, "atomName": "CA" }
+}
+```
+
+Use only the property group for the chosen tool. Do not include `insertionCode` unless the
+actual residue has one. The contracts reject placeholders and report the precise invalid field.
+
+The UniProt command returns a `highlightStatus` and explanatory `message`. A zero count can
+mean highlighting was disabled, another structure is loaded, the entry has no supported
+features, or its sequence numbering does not match the loaded model. A failed retrieval is an
+error instead of a misleading successful result with zero annotations.
+
+The durable `project_events_command_audited` constraint must contain the same command names as
+`COMMAND_NAMES`. Migration `20260904175859_expand_project_event_commands.sql` expands it from
+the original eight to all thirteen. Its regression test prevents the lists from drifting again.
 
 ---
 
@@ -116,15 +145,16 @@ Verified against Chrome's own documentation on 2026-09-04.
 
 ### Enable it
 
-1. Use **Chrome 150 or newer**. See the version note below — 149 is risky.
+1. Use a current **Chrome 150 or newer**. Native tests target the current document API.
 2. Open `chrome://flags/#enable-webmcp-testing`, set it to **Enabled**.
 3. **Relaunch Chrome.** Reloading the tab is not enough; the flag only applies on restart.
-4. Install the **Model Context Tool Inspector** extension from the Chrome team. There is
-   **no built-in agent in Chrome** — without this extension nothing will call your tools.
+4. For manual calls, use **DevTools → Application → WebMCP**. If that pane is absent,
+   also enable `chrome://flags/#devtools-webmcp-support` and relaunch. For natural-language
+   agent chat, install the Chrome team's **Model Context Tool Inspector** extension.
 
-The flag covers local development. The separate origin trial (Chrome 149–156, ending
-2026-11-16) is what lets ordinary visitors to the deployed site use the tools; it needs a
-registered origin and a trial token served by the page.
+The flag enables local testing. Availability for visitors without the flag requires
+Chrome's [origin trial](https://developer.chrome.com/docs/ai/webmcp) and a valid token for
+the deployed origin. Registering tools does not start an AI agent by itself.
 
 ### Check the API is actually there
 
@@ -150,58 +180,158 @@ Open `/app/lab`, load a structure, and prompt the Inspector extension in natural
 Also confirm the lifecycle: navigating away from `/app/lab` must de-register every tool,
 and a Chrome **without** the flag must degrade silently to human-only mode.
 
-### Three things to verify in the real browser, because method 1 cannot catch them
+### Step-by-step walkthrough
 
-The console harness stubs `document.modelContext`, so it proves the command bus works —
-not that Chrome accepts our tool definitions. These are the gaps:
+Each step has a checkpoint. If a checkpoint fails, stop there — the later steps cannot work.
 
-1. **`navigator` vs `document`.** Chrome moved the getter from `navigator.modelContext` to
-   `document.modelContext`; `navigator.modelContext` is deprecated as of Chrome 150 and
-   reported removed in 153 Dev. `src/adapters/webmcp.ts` reads **only**
-   `document.modelContext`. On a Chrome that exposes only the navigator surface, BioFold
-   registers nothing, silently. A one-line fallback closes it:
+**1 · Check your Chrome version.** Open `chrome://version`. Use current Chrome;
+the native tests have been exercised with **152.0.7977.76**. Early previews expose the getter
+on `navigator`; the adapter falls back to that API, including legacy `unregisterTool` cleanup.
 
-   ```ts
-   modelContext = document.modelContext ?? (navigator as { modelContext?: WebMCPModelContext }).modelContext
-   ```
+> Checkpoint: an up-to-date Chrome is installed.
 
-2. **Annotation vocabulary.** We send the MCP server-side set — `readOnlyHint`,
-   `destructiveHint`, `idempotentHint`, `openWorldHint`. Chrome's imperative API documents
-   `readOnlyHint`, `untrustedContentHint` and `consequentialHint`. Our destructive tools
-   (`reset_workspace`) therefore may not be flagged as consequential, which is what would
-   normally make the browser ask the user first. Check whether Chrome prompts.
+**2 · Turn on the flag.** Open `chrome://flags/#enable-webmcp-testing`, set it to
+**Enabled**, then click **Relaunch**. Reloading the tab does nothing.
 
-3. **Return shape.** Chrome documents `execute` as returning a string (or null on
-   navigation). Our tools return a `CommandResult` object with `ok`, `data`, `evidence`,
-   `provenance` and `activityId`. Confirm the agent receives something usable rather than
-   `[object Object]`.
+> Checkpoint: after relaunch, the flag still reads Enabled.
 
-None of these can fail in the console harness, because the harness is the thing being
-mocked. They can only fail in a real browser.
+**3 · Install the Tool Inspector.** From the
+[Chrome Web Store](https://chromewebstore.google.com/detail/gbpdfapgefenggkahomfgkhfehlcenpd),
+or unpacked from [beaufortfrancois/model-context-tool-inspector](https://github.com/beaufortfrancois/model-context-tool-inspector).
+Pin it to the toolbar. It can run tools **manually**, which is the demo-safe path — it does
+not depend on Gemini being available to you.
+
+> Checkpoint: the extension icon is visible in the toolbar.
+
+**4 · Serve the laboratory.** Two options.
+
+*Fastest — no login.* The isolated fixture bypasses Supabase auth entirely and still
+satisfies the registration gates:
+
+```bash
+npx vite build --config vite.e2e.config.ts && npx vite preview --config vite.e2e.config.ts
+```
+
+Then open `http://127.0.0.1:4191/app/lab`.
+
+*Real app.* `pnpm dev`, open `http://127.0.0.1:4173`, sign in, navigate to the laboratory.
+Registration needs an authenticated session, so there is no shortcut here.
+
+Either way the origin is `127.0.0.1`, which counts as a secure context.
+
+> Checkpoint: the laboratory renders with a 3D canvas.
+
+**5 · Load a structure.** If a saved workspace opens empty, click **"Load the 1CRN demo"**
+or invoke `load_structure` with `{ "pdbId": "1CRN" }`. Tools register as soon as the viewer
+is ready, including when no structure is loaded yet.
+
+> Checkpoint: the HUD reads `1 chains · 46 residues · 327 atoms`.
+
+**6 · Confirm the browser API is present.** In DevTools:
+
+```js
+typeof document.modelContext?.registerTool   // → "function"
+typeof navigator.modelContext                // legacy API; absent in the tested Chrome 152
+```
+
+> Checkpoint: the first line prints `"function"`. If it prints `"undefined"`, go back to
+> step 2. If the *second* line prints `"object"` while the first prints `"undefined"`,
+> the adapter will use that legacy API. Upgrade Chrome for the current discovery and
+> execution methods used below.
+
+**7 · Confirm BioFold registered.** Open the Tool Inspector panel.
+
+> Checkpoint: **13 tools** listed, including `load_structure` and `save_project_snapshot`.
+> Chrome's `getTools()` sorts names alphabetically. If step 6 passed but the panel is empty, the gates in
+> `registerBioFoldTools()` rejected the call — check that you are signed in, that the
+> route is `/app/lab`, and that the viewer finished booting. The adapter retries every
+> 2 seconds, so give it a moment before concluding anything.
+
+**8 · Run a tool manually.** In the Inspector, pick `set_representation` and execute
+`{ "style": "stick", "colorScheme": "spectrum" }`.
+
+> Checkpoint: the scene chips in the viewer change to `Stick · Spectrum`. That is the
+> whole thesis in one action — the agent's call moved the human's scene.
+
+**9 · Then use natural language**, if the Inspector's Gemini mode is available to you:
+
+> "Load 4HHB, switch to stick with spectrum colouring, and measure the distance from
+> A:1:CA to A:10:CA."
+
+> Checkpoint: HUD reads `4 chains · 574 residues · 4779 atoms` and a `13.29 Å` chip
+> appears.
+
+**10 · Check the lifecycle.** Navigate away from `/app/lab`.
+
+> Checkpoint: the Inspector's tool list empties. Navigate back and it repopulates.
+
+### Native discovery and execution from DevTools
+
+No console harness or extension is needed for these native calls:
+
+```js
+const tools = await document.modelContext.getTools();
+console.table(tools.map(({ name, description }) => ({ name, description })));
+const load = tools.find(tool => tool.name === "load_structure");
+JSON.parse(await document.modelContext.executeTool(load, JSON.stringify({ pdbId: "1CRN" })));
+const summary = tools.find(tool => tool.name === "get_structure_summary");
+JSON.parse(await document.modelContext.executeTool(summary, "{}"));
+```
+
+The browser serializes BioFold's `CommandResult` to JSON, including `ok`, `data`, `error`,
+`evidence`, `provenance` and `activityId`. Do not serialize again inside the adapter.
+
+The adapter translates shared command metadata into the browser's `readOnlyHint`,
+`untrustedContentHint` and `consequentialHint` annotations. UniProt queries are marked
+mutable because they can highlight residues. External annotations and user notes are
+marked as untrusted content. Chrome 152 exposes the first two hints via `getTools()`;
+it does not expose `consequentialHint` in that result, so do not rely on hints for authorization.
+
+Registration removal uses an `AbortSignal` in current Chrome and `unregisterTool` when
+available in older versions. Command execution keeps its separate cancellation signal
+and workspace generation gate. Leaving the lab, logging out, or hot-reloading the adapter
+removes registrations.
+
+References: [Chrome imperative API](https://developer.chrome.com/docs/ai/webmcp/imperative-api),
+[DevTools WebMCP panel](https://developer.chrome.com/docs/devtools/application/webmcp).
 
 ## 3. Automated tests
 
-Already in the repository, and the cheapest regression net:
+Fast regression coverage (emulated browser context):
 
 ```bash
-npx vitest run tests/workspaceLifecycle.test.ts
-npx vitest run tests/commandContracts.test.ts
-npx vitest run tests/assistantEdgeContracts.test.ts
+pnpm exec vitest run tests/webmcp.test.ts tests/workspaceLifecycle.test.ts tests/commandContracts.test.ts
 ```
 
-These inject a fake `modelContext` the same way method 1 does, and assert registration
-lifetime, de-registration on exit, rejection of stale definitions, and that the contracts
-never drift.
+These cover current/legacy discovery, registration retries, browser errors, cancellation,
+session gates and rejection of stale definitions.
+
+Native Chrome integration (requires Chrome installed):
+
+```bash
+pnpm test:webmcp
+```
+
+`playwright.webmcp.config.ts` builds the isolated laboratory fixture and launches Chrome
+with WebMCP enabled. `tests/e2e/webmcpNative.spec.ts` uses the real `getTools()` and
+`executeTool()` methods without replacing `modelContext`. It exercises all 13 tools,
+JSON results, audit entries, errors and removal on navigation/logout. Authentication is
+simulated; molecular input uses fixtures. This does not validate a production login,
+live external scientific services, cloud persistence, an origin-trial token or an LLM's tool choices.
+
+`tests/e2e/webmcpUnavailable.spec.ts` launches Chrome with WebMCP disabled and checks
+manual structure loading, connection help and the help panel on desktop and mobile.
+
+Verified on 2026-09-04: **22 unit tests and 4 Chrome integration tests passed**, with
+Chrome 152.0.7977.76. TypeScript, targeted ESLint and the production build also passed.
 
 ---
 
-## Known gaps as of 2026-09-04
+## Scope notes
 
-- **The laboratory does not auto-load a structure.** `/app/lab`, `/app/lab?pdb=4HHB` and
-  the search box all leave the viewer on "No structure". Only the "Load the 1CRN demo"
-  button works. Ironically `load_structure` through WebMCP works fine for both `1CRN` and
-  `4HHB` — the agent can load a structure the human interface currently cannot.
-- **No WebMCP status is rendered.** `webmcpStatus` lives in the store and reaches no
-  component. There is nothing on screen telling a user whether tools are registered.
-- **Tool count is inconsistent across the repo.** The app and the landing page say 13;
-  `README.md`, `SUBMISSION.md` and `contexto.md` still say eight.
+- A saved project can open with no structure. The native test deliberately loads one
+  through WebMCP, as an agent would.
+- `save_project_snapshot` currently writes a local browser snapshot. Cloud project
+  persistence uses the existing laboratory project integration and is tested separately.
+- Legacy smoke suites include older UI selectors and eight-tool expectations. Use the
+  dedicated native suite above to verify the current 13-tool Chrome integration.

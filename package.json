@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:webmcp": "node node_modules/@playwright/test/cli.js test --config playwright.webmcp.config.ts",
     "test:e2e:platform": "playwright test tests/e2e/platform.spec.ts tests/e2e/platformEnvironment.spec.ts",
     "test:e2e:lab": "playwright test tests/e2e/smoke.spec.ts tests/e2e/laboratorySession.spec.ts",
     "knowledge:build": "node scripts/knowledge.mjs build",

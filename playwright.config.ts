@@ -4,6 +4,7 @@ import { PLATFORM_URL, LAB_FIXTURE_URL, UNCONFIGURED_URL } from "./tests/config/
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  testIgnore: ["webmcpNative.spec.ts", "webmcpUnavailable.spec.ts"],
   fullyParallel: false,
   workers: 1,
   timeout: 60_000,

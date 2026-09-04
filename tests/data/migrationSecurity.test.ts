@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { COMMAND_NAMES } from "../../src/core/commandContracts";
 
 const migrationsDir = join(process.cwd(), "supabase", "migrations");
 const migrations = readdirSync(migrationsDir)
@@ -13,6 +14,13 @@ const hardening = migrations.find(({ name }) => name.endsWith("_harden_phase2_da
 const assistantRag = migrations.find(({ name }) => name.endsWith("_phase2_assistant_rag.sql"))?.sql ?? "";
 
 describe("Phase 2 migration security", () => {
+  it("allows exactly the current command catalog in the latest durable audit constraint", () => {
+    const checks = [...fullSchema.matchAll(/ADD\s+CONSTRAINT\s+project_events_command_audited\s+CHECK\s*\(\s*command\s+IN\s*\(([\s\S]*?)\)\s*\)/gi)];
+    expect(checks.length).toBeGreaterThan(0);
+    const allowed = [...checks.at(-1)![1].matchAll(/'([^']+)'/g)].map(match => match[1]);
+    expect(allowed.sort()).toEqual([...COMMAND_NAMES].sort());
+  });
+
   it.each([
     "profiles",
     "projects",

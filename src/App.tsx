@@ -36,7 +36,10 @@ function LaboratorySession({ active, projectDataPort }: { active: boolean; proje
   const search = new URLSearchParams(location.search);
   const requested = search.get("pdb");
   const requestedProject = search.get("project");
-  const validRequest = requested && /^[a-z0-9]{4}$/i.test(requested) ? requested.toUpperCase() : undefined;
+  const validRequest =
+    requested && (/^[a-z0-9]{4}$/i.test(requested) || /^AF-[a-z0-9_-]+$/i.test(requested) || /^[a-z0-9]{6,10}$/i.test(requested))
+      ? requested.toUpperCase()
+      : undefined;
   const validProject = requestedProject && /^[a-z0-9-]{1,128}$/i.test(requestedProject) ? requestedProject : undefined;
   const pdbId = validRequest ?? "1CRN";
 

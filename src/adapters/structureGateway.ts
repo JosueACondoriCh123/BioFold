@@ -131,7 +131,7 @@ export const structureGateway = {
 
     // Handle AlphaFold DB predictions (e.g. AF-P04637-F1 or UniProt accession P04637)
     if (id.startsWith("AF-") || id.length > 4) {
-      const uniprotId = id.startsWith("AF-") ? id.split("-")[1] : id;
+      const uniprotId = id.startsWith("AF-") ? (id.split("-")[1] || id) : id;
       try {
         const metadataResponse = await fetch(`https://alphafold.ebi.ac.uk/api/prediction/${uniprotId}`, { signal });
         if (metadataResponse.ok) {
@@ -145,8 +145,24 @@ export const structureGateway = {
           }
         }
       } catch (err) {
-        if (err instanceof StructureGatewayError) throw err;
+        if (err instanceof StructureGatewayError && err.code === "CANCELLED") throw err;
       }
+
+      // Direct fallback to canonical AlphaFold EBI file URLs (v6 and v4)
+      const directCandidateUrls = [
+        `https://alphafold.ebi.ac.uk/files/AF-${uniprotId}-F1-model_v6.cif`,
+        `https://alphafold.ebi.ac.uk/files/AF-${uniprotId}-F1-model_v4.cif`,
+      ];
+      for (const candidateUrl of directCandidateUrls) {
+        try {
+          const data = await fetchTextWithLimits(candidateUrl, signal);
+          void setCachedStructure(id, data);
+          return { id, source: "alphafold", format: detectStructureFormat(data), data };
+        } catch {
+          /* try next candidate */
+        }
+      }
+
       throw new StructureGatewayError(
         "FETCH_FAILED",
         `AlphaFold 3D structure for ${id} was not found in AlphaFold DB.`,

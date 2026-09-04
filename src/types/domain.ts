@@ -207,6 +207,8 @@ export interface CommandOutputMap {
     annotations: ProteinAnnotations;
     highlightedCount: number;
     changedView?: boolean;
+    highlightStatus?: "highlighted" | "disabled" | "no_structure" | "different_structure" | "no_annotations" | "no_matching_residues";
+    message?: string;
   };
   compare_structures_rmsd: {
     referencePdbId: string;
@@ -278,6 +280,7 @@ export interface ClinvarVariantAnnotation {
 }
 
 export interface ProteinAnnotations {
+  retrieval?: { status: "available" | "unavailable"; source: "fixture" | "uniprot"; message?: string };
   pdbId: string;
   uniprotAccession?: string;
   entryName?: string;

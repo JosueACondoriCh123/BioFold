@@ -65,7 +65,7 @@ graph TD
     end
 
     User -->|Dispatches UI Actions| Dispatcher
-    Agent -->|Invokes window.modelContext Tools| Contracts
+    Agent -->|Invokes document.modelContext Tools| Contracts
     Palette -->|Executes Quick Actions| Dispatcher
     Contracts --> Dispatcher
     Dispatcher --> Evidence
@@ -97,7 +97,7 @@ Agent autonomy must be safe and verifiable in scientific research:
 - **Non-Destructive Defaults:** Destructive operations (such as resetting scenes or deleting bookmarks) are explicitly marked with `destructiveHint: true` and cannot be run silently.
 
 ### 4. Zero-Install, Native Browser Compatibility
-BioFold requires **no custom browser extensions, native agent proxies, or Python daemons**. Compatible WebMCP browsers (such as Chrome with WebMCP flags enabled) discover the tools immediately upon visiting the Laboratory (`/app/lab`). When running in conventional browsers, BioFold falls back seamlessly to standard human-operated mode with full Copilot chat functionality.
+BioFold registers its tools through Chrome's native WebMCP API once the authenticated Laboratory (`/app/lab`) viewer is ready. The header shows the current registration status. Use DevTools → Application → WebMCP for manual calls, or the Model Context Tool Inspector extension for agent chat. The built-in BioFold Copilot remains a separate integration. See [Chrome setup and testing](docs/WEBMCP_TESTING.md).
 
 ---
 
@@ -223,7 +223,7 @@ pnpm build
 ### Prerequisites
 - **Node.js:** v22.12.0 or higher (Node 26 recommended)
 - **Package Manager:** `pnpm` v10+ or v11 (see `packageManager` in `package.json`)
-- **Browser:** Google Chrome (v130+ with WebMCP enabled to test AI agent tools)
+- **Browser:** Current Google Chrome with WebMCP enabled to test browser agent tools; native integration tested on Chrome 152. Run `pnpm test:webmcp` for the dedicated browser suite.
 
 ### 1. Clone & Install
 ```bash

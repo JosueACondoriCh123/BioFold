@@ -9,6 +9,7 @@ import { structureGateway } from "../src/adapters/structureGateway";
 import { commandBus } from "../src/core/commandBus";
 import { workspaceSession } from "../src/core/workspaceSession";
 import { useAppStore } from "../src/store/appStore";
+import * as annotationService from "../src/services/uniprotAnnotationService";
 import type { AtomRecord, StructureSummary } from "../src/types/domain";
 
 const atom: AtomRecord = {
@@ -495,6 +496,7 @@ describe("Command Bus atomicity", () => {
 
   it("queries biological UniProt annotations and highlights active sites", async () => {
     const focusSpy = vi.spyOn(viewerPort, "focusResidues").mockImplementation(() => undefined);
+    vi.spyOn(viewerPort, "getAtoms").mockReturnValue([{ ...atom, residueNumber: 13 }]);
 
     const result = await commandBus.execute(
       "query_uniprot_annotations",
@@ -506,11 +508,45 @@ describe("Command Bus atomicity", () => {
     if (result.ok) {
       expect(result.data!.annotations.pdbId).toBe("1CRN");
       expect(result.data!.annotations.proteinName).toBe("Crambin");
+      expect(result.data!.highlightStatus).toBe("highlighted");
+      expect(result.data!.highlightedCount).toBe(1);
     }
+    expect(focusSpy).toHaveBeenCalledWith([{ chain: "A", residueNumber: 13 }], true);
     expect(useAppStore.getState().activity[0]).toMatchObject({
       command: "query_uniprot_annotations",
       status: "success",
     });
+  });
+
+  it("explains a zero highlight count when annotation residue numbers do not match", async () => {
+    vi.spyOn(viewerPort, "getAtoms").mockReturnValue([atom]);
+    const result = await commandBus.execute("query_uniprot_annotations", { pdbId: "1CRN" }, { origin: "agent", agentKind: "webmcp" });
+    expect(result).toMatchObject({ ok: true, data: { highlightedCount: 0, highlightStatus: "no_matching_residues" } });
+    expect(useAppStore.getState().activity[0].message).toContain("no annotated residues matched");
+  });
+
+  it("never highlights annotations from a different structure on the current model", async () => {
+    const focusSpy = vi.spyOn(viewerPort, "focusResidues");
+    vi.spyOn(viewerPort, "getAtoms").mockReturnValue([{ ...atom, residueNumber: 58 }]);
+    const result = await commandBus.execute("query_uniprot_annotations", { pdbId: "4HHB" });
+    expect(result).toMatchObject({ ok: true, data: { highlightStatus: "different_structure", changedView: false, highlightedCount: 0 } });
+    expect(focusSpy).not.toHaveBeenCalled();
+  });
+
+  it("explains when highlighting was explicitly disabled", async () => {
+    const result = await commandBus.execute("query_uniprot_annotations", { pdbId: "1CRN", highlightInViewer: false });
+    expect(result).toMatchObject({ ok: true, data: { highlightStatus: "disabled", highlightedCount: 0 } });
+    expect(useAppStore.getState().activity[0].message).toContain("highlighting was disabled");
+  });
+
+  it("reports an unavailable UniProt service as a failed command instead of success with zero hits", async () => {
+    vi.spyOn(annotationService, "getBiologicalAnnotations").mockResolvedValue({
+      pdbId: "1CRN", proteinName: "Unknown", organism: "Unknown", activeSites: [], disulfideBonds: [], variants: [],
+      retrieval: { status: "unavailable", source: "uniprot", message: "UniProt returned HTTP 503." },
+    });
+    const result = await commandBus.execute("query_uniprot_annotations", { pdbId: "1CRN" });
+    expect(result).toMatchObject({ ok: false, error: { code: "FETCH_FAILED", message: "UniProt returned HTTP 503." } });
+    expect(useAppStore.getState().activity[0].status).toBe("error");
   });
 
   it("compares structures and calculates RMSD with identical structures", async () => {

@@ -123,8 +123,8 @@ export function MolecularExplorer({
 
   async function handleConfirmImport() {
     const normalized = importPdbId.trim().toUpperCase();
-    if (!normalized || !/^[A-Z0-9]{4}$/.test(normalized)) {
-      setImportError("PDB ID must contain exactly 4 alphanumeric characters.");
+    if (!normalized || !(/^[A-Z0-9]{4}$/.test(normalized) || /^AF-[A-Z0-9_-]+$/.test(normalized) || /^[A-Z0-9]{6,10}$/.test(normalized))) {
+      setImportError("Use a 4-character PDB ID (e.g. 1CRN) or AlphaFold/UniProt identifier (e.g. AF-P04637-F1 or P04637).");
       return;
     }
 
@@ -436,12 +436,12 @@ export function MolecularExplorer({
                     type="text"
                     value={importPdbId}
                     onChange={(e) => setImportPdbId(e.target.value.toUpperCase())}
-                    placeholder="e.g. 7C22, 1BNA, 4HHB"
-                    maxLength={4}
+                    placeholder="e.g. 7C22, P04637, AF-P04637-F1"
+                    maxLength={32}
                     disabled={isSavingImport}
                   />
                   <span className="bf-form-hint">
-                    Fetches the experimental structure directly from RCSB Protein Data Bank.
+                    Fetches experimental structures from RCSB PDB or AI predictions from AlphaFold DB.
                   </span>
                 </div>
               ) : (

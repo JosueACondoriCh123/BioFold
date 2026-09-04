@@ -81,12 +81,14 @@ export function executionToProjectEvent(execution: CommandExecution): ProjectEve
 }
 
 export function projectEventToActivity(event: ProjectEventRecord): ActivityEntry {
+  const annotationMessage = event.command === "query_uniprot_annotations" && event.output && "message" in event.output
+    && typeof event.output.message === "string" ? event.output.message : undefined;
   return {
     id: event.activityId,
     command: event.command,
     origin: event.origin,
     status: event.status,
-    message: event.error?.message ?? `Saved ${event.command.replaceAll("_", " ")} completed.`,
+    message: event.error?.message ?? annotationMessage ?? `Saved ${event.command.replaceAll("_", " ")} completed.`,
     createdAt: event.createdAt,
     durationMs: event.durationMs,
     agentKind: event.agentKind,

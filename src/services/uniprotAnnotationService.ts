@@ -10,6 +10,7 @@ import type {
   ClinvarVariantAnnotation,
   ProteinAnnotations,
 } from "../types/domain";
+import { getCatalogItem } from "../data/molecularCatalog";
 
 // Known fallback annotations for standard demo structures
 const FIXTURE_ANNOTATIONS: Record<string, ProteinAnnotations> = {
@@ -142,6 +143,12 @@ async function resolveUniprotAccession(id: string, signal?: AbortSignal): Promis
     return norm;
   }
 
+  // If present in catalog with pre-resolved UniProt accession, return immediately
+  const catalogItem = getCatalogItem(norm);
+  if (catalogItem?.uniProtId) {
+    return catalogItem.uniProtId;
+  }
+
   // If it's a 4-char PDB code, query RCSB polymer entity to get cross-referenced UniProt accession
   if (/^[A-Z0-9]{4}$/.test(norm)) {
     try {
@@ -241,6 +248,7 @@ export async function getBiologicalAnnotations(
   pdbId: string,
   signal?: AbortSignal,
 ): Promise<ProteinAnnotations> {
+  if (signal?.aborted) throw new DOMException("Annotation query cancelled.", "AbortError");
   const normalizedId = pdbId.trim().toUpperCase();
 
   // 1. Check in-memory cache
@@ -251,7 +259,7 @@ export async function getBiologicalAnnotations(
 
   // 2. Check fixture fallbacks
   if (FIXTURE_ANNOTATIONS[normalizedId]) {
-    return FIXTURE_ANNOTATIONS[normalizedId];
+    return { ...FIXTURE_ANNOTATIONS[normalizedId], retrieval: { status: "available", source: "fixture" } };
   }
 
   try {
@@ -291,6 +299,7 @@ export async function getBiologicalAnnotations(
     const { activeSites, disulfideBonds, variants } = parseUniProtFeatures(data.features, "A");
 
     const annotations: ProteinAnnotations = {
+      retrieval: { status: "available", source: "uniprot" },
       pdbId: normalizedId,
       uniprotAccession: accession,
       entryName: data.uniProtkbId,
@@ -305,9 +314,15 @@ export async function getBiologicalAnnotations(
 
     ANNOTATION_CACHE.set(normalizedId, { timestamp: Date.now(), data: annotations });
     return annotations;
-  } catch {
-    // Fallback: minimal valid structure
+  } catch (error) {
+    if (signal?.aborted) throw new DOMException("Annotation query cancelled.", "AbortError");
+    // Keep the human panel usable, while letting commands distinguish a failed
+    // retrieval from a successful query that genuinely contains no features.
     const fallback: ProteinAnnotations = {
+      retrieval: {
+        status: "unavailable", source: "uniprot",
+        message: `Could not retrieve UniProt annotations for ${normalizedId}: ${error instanceof Error ? error.message : "request failed"}.`,
+      },
       pdbId: normalizedId,
       proteinName: `Structure ${normalizedId}`,
       organism: "Experimental macromolecule",

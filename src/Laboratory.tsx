@@ -62,6 +62,7 @@ import { PersistenceIndicator } from "./features/projects/PersistenceIndicator";
 import type { PersistenceState } from "./features/projects/types";
 import { useAppStore } from "./store/appStore";
 import { UniversalSearch } from "./components/search/UniversalSearch";
+import { WebMcpStatus } from "./components/WebMcpStatus";
 import { BiologicalAnnotationsSection } from "./features/annotations/BiologicalAnnotationsSection";
 import { StructureBookmarksSection } from "./features/bookmarks/StructureBookmarksSection";
 import { ShareProjectModal } from "./features/sharing/ShareProjectModal";
@@ -688,6 +689,7 @@ function Laboratory({ active = true, initialPdbId = "1CRN", requestKey = "initia
         />
 
         <div className="header-actions">
+          <WebMcpStatus />
           {projectId && (
             <button
               type="button"

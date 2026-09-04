@@ -61,13 +61,19 @@ function parseResidue(input: unknown, label = "Residue"): ResidueRef {
       ? record.insertionCode.trim().toUpperCase()
       : undefined;
 
-  if (!chain || chain.length > 4 || typeof residueNumber !== "number" || !Number.isInteger(residueNumber)) {
+  if (!chain || chain.length > 4) {
     throw new CommandValidationError(
-      `${label} needs a chain of up to four characters and an integer residueNumber.`,
+      `${label}.chain must be a real chain ID of 1–4 characters, e.g. "A". Replace Inspector placeholders such as "example_string".`,
     );
   }
+  if (typeof residueNumber !== "number" || !Number.isInteger(residueNumber)) {
+    throw new CommandValidationError(`${label}.residueNumber must be an integer from the loaded structure, e.g. 10 (without quotes).`);
+  }
+  if (record.insertionCode !== undefined && typeof record.insertionCode !== "string") {
+    throw new CommandValidationError(`${label}.insertionCode must be a string; omit it for residues without an insertion code.`);
+  }
   if (insertionCode && insertionCode.length > 2) {
-    throw new CommandValidationError(`${label} insertionCode must contain at most two characters.`);
+    throw new CommandValidationError(`${label}.insertionCode must contain at most two characters; omit it unless the residue has an insertion code.`);
   }
   return { chain, residueNumber, insertionCode };
 }
@@ -88,7 +94,7 @@ function parseAtom(input: unknown, label: string): AtomRef {
   );
   const atomName = typeof record.atomName === "string" ? record.atomName.trim().toUpperCase() : "";
   if (!atomName || atomName.length > 4) {
-    throw new CommandValidationError(`${label} needs an atomName of up to four characters.`);
+    throw new CommandValidationError(`${label}.atomName must be a real atom name of 1–4 characters, e.g. "CA" for an alpha carbon. Replace "example_string".`);
   }
   return { ...residue, atomName };
 }
@@ -96,9 +102,9 @@ function parseAtom(input: unknown, label: string): AtomRef {
 const residueSchema = {
   type: "object",
   properties: {
-    chain: { type: "string", minLength: 1, maxLength: 4 },
-    residueNumber: { type: "integer" },
-    insertionCode: { type: "string", maxLength: 2 },
+    chain: { type: "string", minLength: 1, maxLength: 4, description: 'Chain ID from the loaded structure, e.g. "A". Never use "example_string".', examples: ["A"] },
+    residueNumber: { type: "integer", description: "Residue number in the loaded structure, e.g. 10 in 1CRN. Use a JSON number, not a string.", examples: [10] },
+    insertionCode: { type: "string", maxLength: 2, description: "Optional insertion code; omit for ordinary residues such as 1CRN A:10.", examples: [""] },
   },
   required: ["chain", "residueNumber"],
   additionalProperties: false,
@@ -108,13 +114,28 @@ const atomSchema = {
   ...residueSchema,
   properties: {
     ...residueSchema.properties,
-    atomName: { type: "string", minLength: 1, maxLength: 4 },
+    atomName: { type: "string", minLength: 1, maxLength: 4, description: 'PDB atom name, e.g. "CA" for an alpha carbon. Never use "example_string".', examples: ["CA"] },
   },
   required: ["chain", "residueNumber", "atomName"],
 };
 
 function contract<K extends CommandName>(value: CommandContract<K>): CommandContract<K> {
-  return value;
+  return { ...value, inputSchema: { ...value.inputSchema, examples: [COMMAND_EXAMPLES[value.name]] } };
+}
+
+const structureIdSchema = {
+  type: "string",
+  pattern: "^(?:[A-Za-z0-9]{4}|[Aa][Ff]-[A-Za-z0-9_-]{1,29}|[A-Za-z0-9]{6,10})$",
+  description: 'Structure identifier, e.g. "1CRN", "4HHB", "AF-P04637-F1" or "P04637". Replace "example_string" with an actual ID.',
+  examples: ["1CRN", "4HHB", "AF-P04637-F1"],
+};
+
+function parseStructureId(input: unknown, label: string): string {
+  const id = typeof input === "string" ? input.trim().toUpperCase() : "";
+  if (!new RegExp(structureIdSchema.pattern).test(id)) {
+    throw new CommandValidationError(`${label}: use a four-character PDB ID (e.g. "1CRN") or an AlphaFold / UniProt identifier (e.g. "AF-P04637-F1" or "P04637"). Replace "example_string".`);
+  }
+  return id;
 }
 
 export const COMMAND_NAMES = [
@@ -133,6 +154,23 @@ export const COMMAND_NAMES = [
   "save_project_snapshot",
 ] as const satisfies readonly CommandName[];
 
+/** Copyable Inspector examples for a loaded 1CRN demo; these are not defaults. */
+export const COMMAND_EXAMPLES = {
+  load_structure: { pdbId: "1CRN" },
+  get_structure_summary: {},
+  focus_residues: { residues: [{ chain: "A", residueNumber: 10 }], label: true },
+  set_representation: { style: "stick", colorScheme: "spectrum" },
+  show_surface: { visible: true, opacity: 0.5 },
+  measure_distance: { from: { chain: "A", residueNumber: 1, atomName: "CA" }, to: { chain: "A", residueNumber: 10, atomName: "CA" } },
+  preview_mutation_context: { residue: { chain: "A", residueNumber: 10 }, toAminoAcid: "W" },
+  reset_workspace: { scope: "view" },
+  export_publication_figure: { resolution: "1x", background: "white", format: "png" },
+  annotate_active_site: { chain: "A", residueNumber: 10, note: "Residue selected for inspection", color: "#5ccfb5" },
+  query_uniprot_annotations: { pdbId: "1CRN", highlightInViewer: true },
+  compare_structures_rmsd: { referencePdbId: "1CRN", mobilePdbId: "1CRN" },
+  save_project_snapshot: { title: "Crambin WebMCP session" },
+} satisfies { [K in CommandName]: CommandInput<K> };
+
 export const COMMAND_CONTRACTS: { [K in CommandName]: CommandContract<K> } = {
   load_structure: contract({
     name: "load_structure",
@@ -142,11 +180,7 @@ export const COMMAND_CONTRACTS: { [K in CommandName]: CommandContract<K> } = {
     inputSchema: {
       type: "object",
       properties: {
-        pdbId: {
-          type: "string",
-          pattern: "^[A-Za-z0-9_-]{4,32}$",
-          description: "Four-character PDB ID (e.g. 1CRN) or AlphaFold ID (e.g. AF-P04637-F1 or P04637).",
-        },
+        pdbId: structureIdSchema,
       },
       required: ["pdbId"],
       additionalProperties: false,
@@ -154,11 +188,7 @@ export const COMMAND_CONTRACTS: { [K in CommandName]: CommandContract<K> } = {
     annotations: { openWorldHint: true },
     parseInput(input) {
       const record = strictRecord(input, ["pdbId"]);
-      const pdbId = typeof record.pdbId === "string" ? record.pdbId.trim().toUpperCase() : "";
-      if (!/^[A-Z0-9]{4}$|^AF-[A-Z0-9_-]+$|^[A-Z0-9]{6,10}$/.test(pdbId)) {
-        throw new CommandValidationError("Use a four-character PDB ID or valid AlphaFold / UniProt identifier.");
-      }
-      return { pdbId };
+      return { pdbId: parseStructureId(record.pdbId, "pdbId") };
     },
   }),
   get_structure_summary: contract({
@@ -412,8 +442,8 @@ export const COMMAND_CONTRACTS: { [K in CommandName]: CommandContract<K> } = {
     inputSchema: {
       type: "object",
       properties: {
-        pdbId: { type: "string", pattern: "^[A-Za-z0-9_-]{4,32}$" },
-        highlightInViewer: { type: "boolean" },
+        pdbId: structureIdSchema,
+        highlightInViewer: { type: "boolean", description: "Highlight matching residues only when this ID is the structure currently loaded in the viewer." },
       },
       additionalProperties: false,
     },
@@ -427,9 +457,11 @@ export const COMMAND_CONTRACTS: { [K in CommandName]: CommandContract<K> } = {
         return {};
       }
       const record = strictRecord(input, ["pdbId", "highlightInViewer"]);
-      const pdbId = typeof record.pdbId === "string" ? record.pdbId.trim().toUpperCase() : undefined;
-      const highlightInViewer =
-        typeof record.highlightInViewer === "boolean" ? record.highlightInViewer : undefined;
+      const pdbId = record.pdbId === undefined ? undefined : parseStructureId(record.pdbId, "pdbId");
+      if (record.highlightInViewer !== undefined && typeof record.highlightInViewer !== "boolean") {
+        throw new CommandValidationError("highlightInViewer must be true or false.");
+      }
+      const highlightInViewer = record.highlightInViewer as boolean | undefined;
       return {
         ...(pdbId ? { pdbId } : {}),
         ...(highlightInViewer !== undefined ? { highlightInViewer } : {}),
@@ -444,8 +476,8 @@ export const COMMAND_CONTRACTS: { [K in CommandName]: CommandContract<K> } = {
     inputSchema: {
       type: "object",
       properties: {
-        referencePdbId: { type: "string", pattern: "^[A-Za-z0-9_-]{4,32}$" },
-        mobilePdbId: { type: "string", pattern: "^[A-Za-z0-9_-]{4,32}$" },
+        referencePdbId: structureIdSchema,
+        mobilePdbId: structureIdSchema,
       },
       required: ["mobilePdbId"],
       additionalProperties: false,
@@ -453,13 +485,8 @@ export const COMMAND_CONTRACTS: { [K in CommandName]: CommandContract<K> } = {
     annotations: { readOnlyHint: true, idempotentHint: true },
     parseInput(input) {
       const record = strictRecord(input, ["referencePdbId", "mobilePdbId"]);
-      const mobilePdbId =
-        typeof record.mobilePdbId === "string" ? record.mobilePdbId.trim().toUpperCase() : "";
-      const referencePdbId =
-        typeof record.referencePdbId === "string" ? record.referencePdbId.trim().toUpperCase() : undefined;
-      if (!mobilePdbId) {
-        throw new CommandValidationError("mobilePdbId must be specified.");
-      }
+      const mobilePdbId = parseStructureId(record.mobilePdbId, "mobilePdbId");
+      const referencePdbId = record.referencePdbId === undefined ? undefined : parseStructureId(record.referencePdbId, "referencePdbId");
       return {
         mobilePdbId,
         ...(referencePdbId ? { referencePdbId } : {}),

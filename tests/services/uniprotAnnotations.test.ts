@@ -51,5 +51,24 @@ describe("UniProt & ClinVar Biological Annotations Service", () => {
     expect(annotations.pdbId).toBe("9ZZZ");
     expect(annotations.activeSites).toEqual([]);
     expect(annotations.variants).toEqual([]);
+    expect(annotations.retrieval).toMatchObject({ status: "unavailable", source: "uniprot" });
+  });
+
+  it("distinguishes a successful entry with no features from a failed retrieval", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      primaryAccession: "Q9ZZZ1", proteinDescription: { recommendedName: { fullName: { value: "Test protein" } } },
+      organism: { scientificName: "Test organism" }, features: [],
+    }), { status: 200 }));
+    const annotations = await getBiologicalAnnotations("Q9ZZZ1");
+    expect(annotations.activeSites).toEqual([]);
+    expect(annotations.retrieval).toEqual({ status: "available", source: "uniprot" });
+  });
+
+  it("does not report a cancelled request as empty annotation data", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await expect(getBiologicalAnnotations("Q9ZZZ2", controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

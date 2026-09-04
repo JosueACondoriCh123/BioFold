@@ -734,6 +734,9 @@ class CommandBus {
 
     const annotations = await getBiologicalAnnotations(targetId, signal);
     assertNotAborted(signal);
+    if (annotations.retrieval?.status === "unavailable") {
+      return fail(activityId, "FETCH_FAILED", annotations.retrieval.message ?? "UniProt annotations are unavailable. Try again later.", true);
+    }
 
     const activeSites = annotations.activeSites;
     const disulfideBonds = annotations.disulfideBonds;
@@ -748,7 +751,12 @@ class CommandBus {
 
     let highlightedCount = 0;
     let changedView = false;
-    if (input.highlightInViewer !== false && state.structure) {
+    let highlightStatus: NonNullable<CommandOutput<"query_uniprot_annotations">["highlightStatus"]> =
+      input.highlightInViewer === false ? "disabled"
+      : !state.structure ? "no_structure"
+      : state.structure.id.toUpperCase() !== targetId.toUpperCase() ? "different_structure"
+      : "no_annotations";
+    if (input.highlightInViewer !== false && state.structure?.id.toUpperCase() === targetId.toUpperCase()) {
       const atoms = viewerPort.getAtoms();
       const candidateResidues: ResidueRef[] = [];
       for (const s of activeSites) {
@@ -764,13 +772,24 @@ class CommandBus {
       const existingResidues = candidateResidues.filter(
         (res) => findResidueAtoms(atoms, res).length > 0,
       );
+      if (candidateResidues.length > 0) highlightStatus = "no_matching_residues";
       if (existingResidues.length > 0) {
         viewerPort.focusResidues(existingResidues, true);
         state.setSelection(existingResidues);
         highlightedCount = existingResidues.length;
         changedView = true;
+        highlightStatus = "highlighted";
       }
     }
+
+    const messages = {
+      highlighted: `UniProt annotations loaded with ${highlightedCount} residues highlighted.`,
+      disabled: "UniProt annotations retrieved; highlighting was disabled in the tool input.",
+      no_structure: `UniProt annotations retrieved for ${targetId}; load that structure to highlight residues.`,
+      different_structure: `UniProt annotations retrieved for ${targetId}; the viewer contains ${state.structure?.id}, so its residues were not highlighted.`,
+      no_annotations: `UniProt annotations retrieved for ${targetId}, with no supported residue features to highlight.`,
+      no_matching_residues: `UniProt annotations retrieved for ${targetId}, but no annotated residues matched the loaded chains and residue numbers.`,
+    };
 
     return {
       ok: true,
@@ -778,6 +797,8 @@ class CommandBus {
         annotations: filteredAnnotations,
         highlightedCount,
         changedView,
+        highlightStatus,
+        message: messages[highlightStatus],
       },
       evidence: "observed",
       provenance: { source: state.structure?.source ?? "local-calculation", structureId: targetId },
@@ -953,7 +974,7 @@ class CommandBus {
       case "reset_workspace": return `Workspace reset (${payload?.scope}).`;
       case "export_publication_figure": return `Publication figure exported (${String(payload?.format ?? "PNG").toUpperCase()}, ${payload?.dpi ?? 300} DPI).`;
       case "annotate_active_site": return `Active site annotated at residue ${(payload?.residue as any)?.chain}:${(payload?.residue as any)?.residueNumber}.`;
-      case "query_uniprot_annotations": return `UniProt annotations loaded with ${payload?.highlightedCount ?? 0} residues highlighted.`;
+      case "query_uniprot_annotations": return typeof payload?.message === "string" ? payload.message : `UniProt annotations loaded with ${payload?.highlightedCount ?? 0} residues highlighted.`;
       case "compare_structures_rmsd": return `Structural alignment calculated: RMSD ${Number(payload?.rmsd).toFixed(2)} Å across ${payload?.alignedAtomsCount ?? 0} atoms.`;
       case "save_project_snapshot": return `Project snapshot "${payload?.title ?? ""}" saved successfully (rev ${payload?.revision ?? 1}).`;
     }

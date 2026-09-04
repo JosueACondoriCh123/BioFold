@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { BIOFOLD_TOOLS, registerBioFoldTools } from "../src/adapters/webmcp";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BIOFOLD_TOOLS, getWebMcpContext, registerBioFoldTools, unregisterBioFoldTools } from "../src/adapters/webmcp";
 import { COMMAND_NAMES } from "../src/core/commandContracts";
 import { commandBus } from "../src/core/commandBus";
 import { workspaceSession } from "../src/core/workspaceSession";
@@ -47,7 +47,58 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
+afterEach(() => {
+  unregisterBioFoldTools();
+  vi.unstubAllGlobals();
+});
+
 describe("WebMCP adapter", () => {
+  it("prefers document.modelContext and falls back to the early navigator API", async () => {
+    const current = { registerTool: vi.fn() };
+    const legacy = { registerTool: vi.fn() };
+    vi.stubGlobal("document", { modelContext: current });
+    vi.stubGlobal("navigator", { modelContext: legacy });
+    expect(getWebMcpContext()).toBe(current);
+    await expect(registerBioFoldTools()).resolves.toBe(true);
+    expect(legacy.registerTool).not.toHaveBeenCalled();
+    vi.stubGlobal("document", { modelContext: {} });
+    await expect(registerBioFoldTools()).resolves.toBe(true);
+    expect(legacy.registerTool).toHaveBeenCalledTimes(COMMAND_NAMES.length);
+  });
+
+  it("uses browser annotations for mutable queries and externally supplied output", () => {
+    const annotations = (name: string) => BIOFOLD_TOOLS.find(tool => tool.name === name)!.annotations;
+    expect(annotations("get_structure_summary")).toMatchObject({ readOnlyHint: true });
+    expect(annotations("query_uniprot_annotations")).toEqual({ readOnlyHint: false, untrustedContentHint: true, consequentialHint: false });
+    expect(annotations("reset_workspace")).toMatchObject({ consequentialHint: true });
+    expect(annotations("annotate_active_site")).toMatchObject({ readOnlyHint: false, untrustedContentHint: true });
+  });
+
+  it("unregisters legacy tools on exit and does not leak a synchronous registration", async () => {
+    const tools = new Map<string, WebMCPToolDefinition>();
+    const legacy: WebMCPModelContext = {
+      registerTool: (tool) => { tools.set(tool.name, tool); },
+      unregisterTool: (name) => { tools.delete(name); },
+    };
+    const pending = registerBioFoldTools(legacy);
+    workspaceSession.setContext("test-user", false);
+    await expect(pending).resolves.toBe(false);
+    expect(tools.size).toBe(0);
+    workspaceSession.setContext("test-user", true);
+    await expect(registerBioFoldTools(legacy)).resolves.toBe(true);
+    expect(tools.size).toBe(COMMAND_NAMES.length);
+    unregisterBioFoldTools();
+    expect(tools.size).toBe(0);
+  });
+
+  it("reports the browser's registration error for diagnosis", async () => {
+    await expect(registerBioFoldTools({ registerTool: () => {
+      throw new DOMException("The tools permissions policy blocks registration.", "NotAllowedError");
+    } })).resolves.toBe(false);
+    expect(useAppStore.getState()).toMatchObject({ webmcpStatus: "error", registeredToolCount: 0 });
+    expect(useAppStore.getState().webmcpError).toContain("The tools permissions policy blocks registration.");
+  });
+
   it("registers the thirteen audited contracts once", async () => {
     const registered: WebMCPToolDefinition[] = [];
     const modelContext: WebMCPModelContext = {

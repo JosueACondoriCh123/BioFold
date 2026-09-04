@@ -64,4 +64,29 @@ describe("BiologicalSearchService", () => {
 
     fetchSpy.mockRestore();
   });
+
+  it("finds structures by UniProt ID from the catalog", async () => {
+    const results = await searchBiologicalStructures("P01542");
+    expect(results.length).toBeGreaterThan(0);
+    const crambin = results.find((r) => r.id === "1CRN");
+    expect(crambin).toBeDefined();
+    expect(crambin?.title.toLowerCase()).toContain("crambin");
+  });
+
+  it("returns AlphaFold DB models when querying 'alphafold'", async () => {
+    const results = await searchBiologicalStructures("alphafold");
+    expect(results.length).toBeGreaterThan(0);
+    const afModel = results.find((r) => r.source === "alphafold");
+    expect(afModel).toBeDefined();
+    expect(afModel?.badge).toBe("AlphaFold DB");
+    expect(afModel?.id.startsWith("AF-")).toBe(true);
+  });
+
+  it("normalizes AF- prefixed query to discover the AlphaFold model", async () => {
+    const results = await searchBiologicalStructures("AF-P04637-F1");
+    expect(results.length).toBeGreaterThan(0);
+    const p53 = results.find((r) => r.id === "AF-P04637-F1" || r.uniprotAccession === "P04637");
+    expect(p53).toBeDefined();
+    expect(p53?.badge).toBe("AlphaFold DB");
+  });
 });

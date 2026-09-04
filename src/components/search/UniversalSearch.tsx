@@ -70,7 +70,9 @@ export function UniversalSearch({
     }
 
     if (!trimmed) {
-      setResults([]);
+      void searchBiologicalStructures("").then((featured) => {
+        setResults(featured);
+      });
       setIsSearching(false);
       return;
     }
@@ -225,7 +227,9 @@ export function UniversalSearch({
 
           {!isSearching && results.length > 0 && (
             <>
-              <div className="bf-search-dropdown-header">Biological Matches</div>
+              <div className="bf-search-dropdown-header">
+                {query.trim() ? "Biological Matches" : "Featured Archives (RCSB & AlphaFold DB)"}
+              </div>
               {results.map((item, index) => (
                 <button
                   key={`${item.source}-${item.id}`}

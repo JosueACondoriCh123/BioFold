@@ -90,4 +90,19 @@ describe("project workspace persistence mapping", () => {
       sourceMessageId: undefined,
     });
   });
+
+  it("restores the explanatory UniProt highlight message", () => {
+    const event = {
+      id: "event-annotation", projectId: "project-1", activityId: "activity-annotation",
+      command: "query_uniprot_annotations", origin: "agent", agentKind: "webmcp",
+      status: "success", evidence: "observed", input: { pdbId: "1CRN" },
+      output: {
+        annotations: { pdbId: "1CRN", proteinName: "Crambin", organism: "Crambe hispanica", activeSites: [], disulfideBonds: [], variants: [] },
+        highlightedCount: 0, changedView: false, highlightStatus: "no_matching_residues",
+        message: "UniProt annotations retrieved for 1CRN, but no annotated residues matched the loaded chains and residue numbers.",
+      },
+      durationMs: 12, createdAt: "2026-09-04T18:00:00.000Z",
+    } as ProjectEventRecord;
+    expect(projectEventToActivity(event).message).toBe(event.output!.message);
+  });
 });

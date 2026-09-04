@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   COMMAND_CONTRACTS,
   COMMAND_NAMES,
+  COMMAND_EXAMPLES,
   CommandValidationError,
   parseCommandInput,
 } from "../src/core/commandContracts";
@@ -43,6 +44,28 @@ const validInputs = {
 } as const;
 
 describe("command contracts", () => {
+  it("publishes valid copyable examples for every Inspector tool", () => {
+    for (const name of COMMAND_NAMES) {
+      expect(COMMAND_CONTRACTS[name].inputSchema.examples).toEqual([COMMAND_EXAMPLES[name]]);
+      expect(() => parseCommandInput(name, COMMAND_EXAMPLES[name])).not.toThrow();
+    }
+  });
+
+  it("rejects the actual Inspector placeholders with a field-specific explanation", () => {
+    expect(() => parseCommandInput("load_structure", { pdbId: "example_string" })).toThrow(/pdbId.*1CRN.*example_string/);
+    expect(() => parseCommandInput("focus_residues", { residues: [{ chain: "example_string", residueNumber: 0, insertionCode: "example_string" }] })).toThrow(/Residue 1.chain.*example_string/);
+    expect(() => parseCommandInput("measure_distance", { from: { chain: "example_string", residueNumber: 0, atomName: "example_string" }, to: COMMAND_EXAMPLES.measure_distance.to })).toThrow(/from.chain/);
+    expect(() => parseCommandInput("preview_mutation_context", { residue: { chain: "example_string", residueNumber: 0 }, toAminoAcid: "A" })).toThrow(/Residue.chain/);
+    expect(() => parseCommandInput("focus_residues", { residues: [{ chain: "A", residueNumber: "10" }] })).toThrow(/without quotes/);
+  });
+
+  it("validates IDs and boolean flags in annotation and comparison commands", () => {
+    expect(() => parseCommandInput("query_uniprot_annotations", { pdbId: "example_string" })).toThrow(/pdbId/);
+    expect(() => parseCommandInput("query_uniprot_annotations", { highlightInViewer: "false" })).toThrow(/highlightInViewer/);
+    expect(() => parseCommandInput("compare_structures_rmsd", { mobilePdbId: "example_string" })).toThrow(/mobilePdbId/);
+    expect(() => parseCommandInput("compare_structures_rmsd", { mobilePdbId: "1CRN", referencePdbId: 1234 })).toThrow(/referencePdbId/);
+  });
+
   it("defines exactly thirteen strict JSON schemas with behavioral annotations", () => {
     expect(Object.keys(COMMAND_CONTRACTS)).toEqual(COMMAND_NAMES);
     for (const name of COMMAND_NAMES) {
