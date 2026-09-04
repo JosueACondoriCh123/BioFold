@@ -141,6 +141,10 @@ landing no pueda desincronizarse del contrato real.
 - JSON-LD `SoftwareApplication`.
 - Imagen OG de 1200×630 generada a partir de la captura existente.
 
+Fuera de alcance en esta iteración: la conversión de `/4hhb-preview.png` (414 KB) a
+WebP/AVIF con `<picture>` y dimensiones responsivas. Queda anotada como mejora pendiente
+de rendimiento, sin bloquear este rediseño.
+
 ## 9. Tests
 
 Assertions que cambian al cambiar el copy:
