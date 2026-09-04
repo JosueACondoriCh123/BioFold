@@ -1,0 +1,225 @@
+/* BioFold 3D: Biological Annotations Section CSS */
+
+.bf-annotations-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--bf-line, #1e2c26);
+}
+
+.bf-annotations-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bf-annotations-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.bf-annotations-header-title svg {
+  color: var(--bf-accent, #5ccfb5);
+}
+
+.bf-uniprot-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--bf-accent, #5ccfb5);
+  text-decoration: none;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(92, 207, 181, 0.08);
+  border: 1px solid rgba(92, 207, 181, 0.25);
+  transition: all 0.15s ease;
+}
+
+.bf-uniprot-link-btn:hover {
+  background: rgba(92, 207, 181, 0.18);
+  color: #fff;
+}
+
+.bf-protein-meta-box {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--bf-line, #1e2c26);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.bf-protein-meta-box strong {
+  display: block;
+  color: #fff;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+.bf-protein-meta-box p {
+  color: var(--bf-muted, #79918b);
+  margin: 4px 0 0;
+  font-size: 11px;
+}
+
+/* Accordion Card */
+.bf-annotation-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--bf-line, #1e2c26);
+  border-radius: 8px;
+  background: #0f1816;
+  overflow: hidden;
+}
+
+.bf-annotation-card-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.bf-annotation-card-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.bf-annotation-card-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bf-annotation-count-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(92, 207, 181, 0.15);
+  color: var(--bf-accent, #5ccfb5);
+}
+
+.bf-annotation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.bf-annotation-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 11px;
+}
+
+.bf-annotation-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bf-annotation-res-badge {
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.bf-annotation-desc {
+  color: var(--bf-muted, #79918b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.bf-annotation-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(92, 207, 181, 0.1);
+  border: 1px solid rgba(92, 207, 181, 0.25);
+  color: var(--bf-accent, #5ccfb5);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.bf-annotation-action-btn:hover {
+  background: rgba(92, 207, 181, 0.22);
+  color: #fff;
+}
+
+.bf-variant-pathogenic-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.bf-variant-pathogenic-badge.is-pathogenic {
+  background: rgba(229, 62, 62, 0.2);
+  border: 1px solid rgba(229, 62, 62, 0.35);
+  color: #fc8181;
+}
+
+.bf-variant-pathogenic-badge.is-benign {
+  background: rgba(72, 187, 120, 0.2);
+  border: 1px solid rgba(72, 187, 120, 0.35);
+  color: #68d391;
+}
+
+.bf-highlight-all-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  margin-top: 4px;
+  border-radius: 6px;
+  background: rgba(92, 207, 181, 0.1);
+  border: 1px dashed rgba(92, 207, 181, 0.3);
+  color: var(--bf-accent, #5ccfb5);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bf-highlight-all-btn:hover {
+  background: rgba(92, 207, 181, 0.2);
+  color: #fff;
+}

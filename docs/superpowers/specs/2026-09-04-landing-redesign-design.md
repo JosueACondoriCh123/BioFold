@@ -58,33 +58,50 @@ evidencia de una afirmación ya establecida y no como una lista de features suel
 El hero queda con eyebrow, titular, un párrafo, dos CTAs y el panel. La tira
 `ocho herramientas · un command bus · todo auditado` baja a la sección 01.
 
-## 5. Hero animado
+## 5. Escenario cinematográfico
 
-Animación DOM/SVG scriptada, no `<video>` ni `<canvas>`.
+Sustituye al hero estático. Un vídeo de fondo a sangre completa queda fijado con
+`position: sticky` mientras cinco paneles de texto entran y salen deslizándose, siguiendo
+la referencia de movimiento aportada por el propietario.
 
-Reproduce una sesión real en bucle: llega una llamada `measure_distance` del agente,
-atraviesa el command bus, aparece la medida en ångströms sobre la escena y se escribe la
-línea correspondiente en el audit trail.
+Paneles, en orden de scroll: tesis (hero, con los CTA), «los píxeles no miden ångströms»,
+«un solo command bus», «ocho herramientas tipadas» y «nada ocurre fuera del registro».
 
-Restricciones que fuerzan esta decisión:
+El vídeo entregado (hélice de ADN en partículas, 4K, 24,9 s, 24 MB) se procesa antes de
+entrar al repositorio:
 
-- `tests/e2e/design.spec.ts` exige `canvas` count 0 y cero peticiones a `3Dmol`,
-  `geometry.worker` o `Laboratory-*` en `/`. Un visor real rompe el test y contradice el
-  «zero WebGL overhead» de `SUBMISSION.md`.
-- Un `.webm` de pantalla añade cerca de 1 MB y no explica el mecanismo: muestra el
-  resultado, no el camino.
-- DOM/SVG es nítido en el proyector del jurado a cualquier resolución.
+- Grading `hue=-18, saturación 0,38, brillo -0,05, contraste 1,06, gamma 0,95`, que lleva
+  el cian original a `--bf-turquoise` y el magenta a `--bf-rose`. Sin grading el vídeo lee
+  como un stock pegado sobre la paleta verde salvia del resto de la plataforma.
+- WebM/VP9 1600 px CRF 44 (1,9 MB) con MP4/H.264 de respaldo (2,0 MB) y poster JPEG
+  (49 KB). El navegador descarga solo una de las dos pistas de vídeo.
+- Los fotogramas inicial y final son casi idénticos en el original, así que el bucle no
+  necesita corte ni crossfade.
 
-Honestidad: usa nombres de herramienta reales derivados de `COMMAND_NAMES` y valores
-reales de 4HHB (cuatro cadenas, 574 residuos, 4779 átomos) superpuestos sobre la captura
-auténtica `/4hhb-preview.png`. El panel lleva una etiqueta visible que lo identifica como
-recreación de la interfaz, no como la aplicación en vivo.
+Restricciones respetadas: sin `<canvas>`, sin workers y sin peticiones a `3Dmol`,
+`geometry.worker` o `Laboratory-*`, que es lo que exige `tests/e2e/design.spec.ts`.
 
-La animación respeta `prefers-reduced-motion`: con la preferencia activa se muestra el
-estado final estático, sin ciclo.
+### Legibilidad sobre imagen en movimiento
 
-Si más adelante se graba un `.webm` real del laboratorio, encaja en la sección 03 sin
-rehacer el hero.
+El texto se apoya en tres capas de degradado más un halo (`text-shadow`). El halo no es
+decorativo: el fondo cambia con el tiempo, así que un punto oscuro en un fotograma puede
+ser un filamento brillante en el siguiente, y un degradado calibrado sobre una sola
+captura no garantiza nada.
+
+El criterio de aceptación es el peor parche local (celda más brillante de un submuestreo
+16×16 detrás de cada titular), medido a lo largo de siete instantes del bucle, en 1440 px
+y 390 px: nunca por debajo de 4,5:1.
+
+### Accesibilidad
+
+Bajo `prefers-reduced-motion` el escenario se despina por completo: sin vídeo, sin
+`sticky`, sin estilos en línea, y los paneles se apilan como secciones normales sobre el
+poster estático.
+
+Los paneles no llevan `aria-hidden` en ningún momento: el fundido es decoración, no un
+cambio de contenido, así que un lector de pantalla recorre los cinco en orden de DOM sea
+cual sea la posición de scroll. El hero es el único panel con enlaces, y recibe `inert`
+mientras está fundido para que sus CTA no puedan recibir foco de teclado invisible.
 
 ## 6. Dirección visual
 

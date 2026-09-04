@@ -1,0 +1,323 @@
+/* Landing-only styles. Shared chrome (header, footer, buttons, fields) stays in platform.css. */
+
+.bf-landing {
+  --bf-stage-panels: 5;
+  --bf-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* The public header floats over the opening stage instead of sitting above it. */
+.bf-public-header-overlay {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 5;
+  border-bottom: 0;
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------- stage --- */
+
+.bf-stage-track {
+  position: relative;
+  height: calc((var(--bf-stage-panels) + 1) * 100vh);
+}
+.bf-stage-pin {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+.bf-stage-video,
+.bf-stage-still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.bf-stage-still { display: none; }
+.bf-stage-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to bottom, #0d1514c4 0%, #0d151400 22%),
+    linear-gradient(to top, #0d1514 2%, #0d1514f2 30%, #0d1514c0 52%, #0d151459 72%, #0d151400 88%),
+    linear-gradient(to right, #0d1514ee 0%, #0d1514b5 38%, #0d15143d 62%, #0d151400 78%);
+}
+
+.bf-stage-content {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-items: end;
+  width: min(1280px, calc(100% - 96px));
+  margin-inline: auto;
+  padding-bottom: clamp(72px, 12vh, 132px);
+}
+.bf-stage-panel {
+  grid-area: 1 / 1;
+  max-width: 640px;
+  will-change: opacity, transform;
+}
+/* The backdrop is a moving image: a dark halo keeps copy legible on every frame. */
+.bf-stage-panel :is(h1, h2, p, .bf-eyebrow) {
+  text-shadow: 0 1px 2px #0d1514cc, 0 2px 22px #0d1514e6;
+}
+.bf-stage-panel h2 {
+  margin: 22px 0 20px;
+  font-size: clamp(30px, 3.4vw, 46px);
+  letter-spacing: -.035em;
+}
+.bf-stage-panel > p {
+  max-width: 540px;
+  font-size: 16px;
+  line-height: 1.75;
+  color: #c3d2cb;
+}
+.bf-stage-hero h1 {
+  margin: 24px 0 26px;
+  font-size: clamp(38px, 4.6vw, 68px);
+}
+.bf-stage-hero h1 span { color: var(--bf-accent); }
+.bf-stage-hero > p {
+  max-width: 560px;
+  margin-bottom: 34px;
+  font-size: 17px;
+}
+.bf-stage-aside {
+  margin-top: 26px !important;
+  padding-top: 18px;
+  border-top: 1px solid #ffffff1f;
+  font-size: 12px !important;
+  letter-spacing: .06em;
+  color: var(--bf-accent) !important;
+}
+
+.bf-stage-ticks {
+  position: absolute;
+  top: 50%;
+  right: max(28px, calc((100% - 1280px) / 2));
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  transform: translateY(-50%);
+}
+.bf-stage-ticks li {
+  width: 2px;
+  height: 26px;
+  border-radius: 2px;
+  background: #ffffff2e;
+  transition: background-color .35s ease;
+}
+.bf-stage-ticks li.is-active { background: var(--bf-accent); }
+
+/* ------------------------------------------------------------- explore --- */
+
+.bf-explore {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: 64px;
+}
+.bf-explore .bf-capabilities {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+.bf-explore .bf-capabilities article {
+  padding: 26px 0;
+  border-right: 0;
+  border-bottom: 1px solid var(--bf-line);
+}
+.bf-explore .bf-capabilities article:first-child { padding-top: 0; }
+.bf-explore .bf-capabilities article:last-child { padding-bottom: 0; border-bottom: 0; }
+.bf-explore .bf-capabilities h3 { margin-top: 18px; }
+.bf-explore .bf-capabilities .bf-feature-detail { margin-top: 14px; }
+
+/* ----------------------------------------------------------------- bus --- */
+
+.bf-bus {
+  padding: 8px;
+  border: 1px solid var(--bf-line);
+  border-radius: 18px;
+  background: linear-gradient(160deg, #16211d, #121b18);
+}
+.bf-bus-diagram { display: block; width: 100%; height: auto; }
+.bf-bus-wire path {
+  stroke: #4e6a5d;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+}
+.bf-bus-node rect {
+  fill: #16241e;
+  stroke: #354d42;
+  stroke-width: 1;
+}
+.bf-bus-core rect { stroke: var(--bf-accent); stroke-width: 1.25; }
+.bf-bus-diagram text {
+  fill: var(--bf-text);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+}
+.bf-bus-core text:first-of-type { fill: var(--bf-accent); font-size: 12.5px; font-weight: 600; }
+.bf-bus-diagram .bf-bus-note { fill: var(--bf-muted); font-size: 8.7px; font-weight: 400; }
+
+.bf-bus-stack { display: none; }
+
+.bf-bus-note-line {
+  display: block;
+  margin-top: 28px !important;
+  font-size: 14px;
+  line-height: 1.75;
+}
+.bf-bus-note-line strong { color: var(--bf-text); font-weight: 600; }
+.bf-bus-note-line code {
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: #22392e;
+  color: var(--bf-accent);
+  font-family: var(--bf-mono);
+  font-size: 13px;
+}
+
+/* --------------------------------------------------------------- tools --- */
+
+.bf-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  padding: 1px;
+  list-style: none;
+  background: var(--bf-line);
+  border: 1px solid var(--bf-line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.bf-tools > li {
+  padding: 28px;
+  background: var(--bf-panel);
+}
+.bf-tool-head { display: flex; align-items: center; gap: 12px; }
+.bf-tool-index {
+  color: var(--bf-muted);
+  font-family: var(--bf-mono);
+  font-size: 12px;
+}
+.bf-tool-head code {
+  color: var(--bf-accent);
+  font-family: var(--bf-mono);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.bf-tools h3 { margin-top: 16px; font-size: 17px; }
+.bf-tools > li > p { margin-top: 10px; font-size: 14px; line-height: 1.7; }
+.bf-tool-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.bf-tool-hints li {
+  padding: 3px 9px;
+  border: 1px solid #3b5347;
+  border-radius: 999px;
+  color: var(--bf-muted);
+  font-family: var(--bf-mono);
+  font-size: 11px;
+}
+.bf-tool-hints li[data-hint="destructive"] { border-color: #6d4f46; color: #e0b3a6; }
+.bf-tool-hints li[data-hint="open-world"] { border-color: #55604a; color: var(--bf-amber); }
+.bf-tools-note { margin-top: 24px !important; font-size: 13px; }
+
+/* ------------------------------------------------------------ platform --- */
+
+.bf-platform-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px 48px;
+}
+.bf-platform-grid article {
+  padding-top: 22px;
+  border-top: 1px solid var(--bf-line);
+}
+.bf-platform-grid h3 { font-size: 17px; }
+.bf-platform-grid p { margin-top: 10px; font-size: 14px; line-height: 1.7; }
+
+/* ---------------------------------------------------------- responsive --- */
+
+@media (max-width: 1100px) {
+  .bf-stage-content { width: calc(100% - 48px); }
+  .bf-explore { gap: 40px; }
+}
+@media (max-width: 1000px) {
+  .bf-explore { grid-template-columns: 1fr; gap: 40px; }
+  .bf-explore .bf-preview { width: min(100%, 560px); justify-self: center; }
+  .bf-stage-ticks { right: 20px; }
+  .bf-bus-diagram { display: none; }
+  .bf-bus {
+    padding: 28px;
+    border-radius: 16px;
+  }
+  .bf-bus-stack {
+    display: grid;
+    gap: 24px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .bf-bus-stack li { display: grid; grid-template-columns: 22px 1fr; gap: 16px; }
+  .bf-bus-stack li > svg { margin-top: 3px; color: var(--bf-accent); }
+  .bf-bus-stack h3 { font-size: 17px; }
+  .bf-bus-stack p { margin-top: 6px; font-size: 14px; }
+}
+@media (max-width: 720px) {
+  .bf-stage-content {
+    width: calc(100% - 40px);
+    padding-bottom: clamp(56px, 10vh, 96px);
+  }
+  .bf-stage-panel h2 { margin: 16px 0 16px; }
+  .bf-stage-hero h1 { margin: 18px 0 20px; }
+  .bf-stage-hero > p { margin-bottom: 28px; font-size: 16px; }
+  .bf-stage-panel > p { font-size: 15px; }
+  .bf-stage-ticks { display: none; }
+  .bf-tools { grid-template-columns: 1fr; }
+  .bf-tools > li { padding: 24px; }
+  .bf-platform-grid { grid-template-columns: 1fr; gap: 24px; }
+  .bf-bus { padding: 24px; }
+}
+
+/* ------------------------------------------------------ reduced motion --- */
+
+@media (prefers-reduced-motion: reduce) {
+  .bf-stage-track { height: auto; }
+  .bf-stage-pin { position: static; height: auto; }
+  .bf-stage-video { display: none; }
+  .bf-stage-still {
+    position: absolute;
+    display: block;
+  }
+  .bf-stage-content {
+    position: relative;
+    display: block;
+    padding-block: 152px 96px;
+  }
+  .bf-stage-panel {
+    opacity: 1 !important;
+    transform: none !important;
+    max-width: 660px;
+  }
+  .bf-stage-panel + .bf-stage-panel {
+    margin-top: 56px;
+    padding-top: 48px;
+    border-top: 1px solid #ffffff1f;
+  }
+  .bf-stage-ticks { display: none; }
+}
+
+/* The evidence section now uses the shared section heading, which already spaces itself. */
+.bf-limits .bf-evidence-grid { margin-top: 0; }

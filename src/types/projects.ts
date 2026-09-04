@@ -46,6 +46,8 @@ export interface ProjectSummary {
   description: string;
   activePdbId: string | null;
   revision: number;
+  isPublic?: boolean;
+  shareToken?: string | null;
   createdAt: string;
   updatedAt: string;
 }

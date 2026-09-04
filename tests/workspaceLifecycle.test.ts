@@ -98,7 +98,7 @@ describe("workspace/session boundary", () => {
 });
 
 describe("registration lifetime", () => {
-  it("removes all tools on exit, re-registers eight, and rejects stale definitions", async () => {
+  it("removes all tools on exit, re-registers thirteen, and rejects stale definitions", async () => {
     const tools = new Map<string, WebMCPToolDefinition>();
     const context: WebMCPModelContext = { registerTool: (tool, options) => {
       expect(options?.signal).toBeDefined();
@@ -108,12 +108,12 @@ describe("registration lifetime", () => {
     } };
     await registerBioFoldTools(context);
     const stale = tools.get("get_structure_summary")!;
-    expect(tools.size).toBe(8);
+    expect(tools.size).toBe(13);
     workspaceSession.setContext("user-a", false);
     expect(tools.size).toBe(0);
     workspaceSession.setContext("user-a", true);
     await registerBioFoldTools(context);
-    expect(tools.size).toBe(8);
+    expect(tools.size).toBe(13);
     expect(await stale.execute({})).toMatchObject({ ok: false, error: { code: "WORKSPACE_INACTIVE" } });
     expect(await tools.get("get_structure_summary")!.execute({})).toMatchObject({ ok: true });
     expect(useAppStore.getState().activity).toHaveLength(1);

@@ -52,7 +52,7 @@ test("landing is public and does not load WebGL, workers or WebMCP", async ({ pa
   page.on("request", request => { if (/Laboratory[-.]|geometry\.worker|3Dmol/i.test(request.url())) runtime.push(request.url()); });
   page.on("worker", worker => runtime.push(worker.url()));
   await page.goto("/");
-  await expect(page).toHaveTitle(/Explore molecular structures · BioFold 3D/i);
+  await expect(page).toHaveTitle(/A molecular workspace agents can actually use · BioFold 3D/i);
   await expect(page.getByRole("link", { name: "Create account" }).first()).toBeVisible();
   await assertNoMolecularRuntime(page);
   expect(runtime).toEqual([]);

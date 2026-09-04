@@ -19,7 +19,8 @@
   border: 1px solid var(--line, #24352e);
   border-radius: var(--radius, 12px);
   scrollbar-width: thin;
-  scrollbar-color: #285248 transparent;
+  scrollbar-color: #9f9f9f #2c2c2c;
+  scrollbar-gutter: stable;
 }
 
 .bf-sidebar-stats-grid {
@@ -182,7 +183,8 @@
   border: 1px solid var(--line, #24352e);
   border-radius: var(--radius, 12px);
   scrollbar-width: thin;
-  scrollbar-color: #285248 transparent;
+  scrollbar-color: #9f9f9f #2c2c2c;
+  scrollbar-gutter: stable;
 }
 
 .bf-explorer-main-header {
@@ -229,7 +231,7 @@
   background: rgba(53, 224, 189, 0.03);
 }
 
-.bf-search-clear-btn {
+.bf-explorer-search-clear-btn {
   position: absolute;
   right: 10px;
   top: 50%;
@@ -242,7 +244,7 @@
   padding: 4px;
 }
 
-.bf-search-clear-btn:hover {
+.bf-explorer-search-clear-btn:hover {
   color: #fff;
 }
 

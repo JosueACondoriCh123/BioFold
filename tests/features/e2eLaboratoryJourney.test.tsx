@@ -23,6 +23,7 @@ vi.mock("../../src/adapters/viewerPort", () => ({
     resize: vi.fn(),
     dispose: vi.fn(),
     setSuspended: vi.fn(),
+    hasModel: vi.fn(() => true),
   },
 }));
 

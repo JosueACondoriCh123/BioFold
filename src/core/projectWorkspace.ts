@@ -52,7 +52,13 @@ export async function restoreWorkspaceSnapshot(snapshot: WorkspaceSnapshotV1, si
       toAminoAcid: snapshot.mutation.targetAminoAcid,
     }, context), signal);
   }
-  if (snapshot.view.camera) viewerPort.setView(snapshot.view.camera);
+  if (snapshot.view.camera) {
+    try {
+      viewerPort.setView(snapshot.view.camera);
+    } catch {
+      viewerPort.resetView();
+    }
+  }
 }
 
 export function executionToProjectEvent(execution: CommandExecution): ProjectEventDraft {

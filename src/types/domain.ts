@@ -4,7 +4,7 @@ export type EvidenceLevel =
   | "heuristic"
   | "unavailable";
 
-export type ProvenanceSource = "fixture" | "rcsb" | "custom" | "local-calculation";
+export type ProvenanceSource = "fixture" | "rcsb" | "custom" | "local-calculation" | "alphafold";
 
 export type CommandErrorCode =
   | "INVALID_INPUT"
@@ -42,7 +42,12 @@ export type CommandName =
   | "show_surface"
   | "measure_distance"
   | "preview_mutation_context"
-  | "reset_workspace";
+  | "reset_workspace"
+  | "export_publication_figure"
+  | "annotate_active_site"
+  | "query_uniprot_annotations"
+  | "compare_structures_rmsd"
+  | "save_project_snapshot";
 
 export type WebMcpStatus =
   | "inactive"
@@ -102,7 +107,7 @@ export interface StructureSummary {
 
 export interface LoadedStructure {
   id: string;
-  source: "fixture" | "rcsb" | "custom";
+  source: "fixture" | "rcsb" | "custom" | "alphafold";
   format: "cif" | "pdb";
   loadedAt: string;
 }
@@ -144,12 +149,35 @@ export interface CommandInputMap {
   measure_distance: { from: AtomRef; to: AtomRef };
   preview_mutation_context: { residue: ResidueRef; toAminoAcid: string };
   reset_workspace: { scope: "view" | "all" };
+  export_publication_figure: {
+    resolution?: "1x" | "2x" | "4k";
+    background?: "white" | "transparent" | "dark";
+    format?: "png" | "jpeg";
+  };
+  annotate_active_site: {
+    chain: string;
+    residueNumber: number;
+    note: string;
+    color?: string;
+  };
+  query_uniprot_annotations: {
+    pdbId?: string;
+    highlightInViewer?: boolean;
+  };
+  compare_structures_rmsd: {
+    referencePdbId?: string;
+    mobilePdbId: string;
+  };
+  save_project_snapshot: {
+    title: string;
+    description?: string;
+  };
 }
 
 export interface CommandOutputMap {
   load_structure: {
     structureId: string;
-    source: "fixture" | "rcsb" | "custom";
+    source: "fixture" | "rcsb" | "custom" | "alphafold";
     summary: StructureSummary;
   };
   get_structure_summary: StructureSummary;
@@ -163,6 +191,36 @@ export interface CommandOutputMap {
   measure_distance: DistanceMeasurement & { units: "angstrom"; changedView: true };
   preview_mutation_context: MutationPreview & { neighborCount: number; changedView: true };
   reset_workspace: { scope: "view" | "all"; changedView: true };
+  export_publication_figure: {
+    dataUrl: string;
+    width: number;
+    height: number;
+    dpi: number;
+    format: "png" | "jpeg";
+  };
+  annotate_active_site: {
+    bookmark: BookmarkAnnotation;
+    residue: ResidueRef;
+    changedView: true;
+  };
+  query_uniprot_annotations: {
+    annotations: ProteinAnnotations;
+    highlightedCount: number;
+    changedView?: boolean;
+  };
+  compare_structures_rmsd: {
+    referencePdbId: string;
+    mobilePdbId: string;
+    rmsd: number;
+    alignedAtomsCount: number;
+    interpretation: string;
+  };
+  save_project_snapshot: {
+    projectId: string;
+    title: string;
+    savedAt: string;
+    revision: number;
+  };
 }
 
 export type CommandInput<K extends CommandName> = CommandInputMap[K];
@@ -191,4 +249,57 @@ export interface CommandContext {
   /** Assistant commands require an explicit user confirmation before dispatch. */
   approvedByUser?: boolean;
   sourceMessageId?: string;
+}
+
+export interface ActiveSiteAnnotation {
+  type: "active_site" | "binding_site";
+  chain: string;
+  residueNumber: number;
+  aminoAcid?: string;
+  description: string;
+}
+
+export interface DisulfideAnnotation {
+  chain: string;
+  residue1: number;
+  residue2: number;
+  description?: string;
+}
+
+export interface ClinvarVariantAnnotation {
+  chain: string;
+  position: number;
+  wildType: string;
+  mutant: string;
+  consequence: string;
+  clinicalSignificance?: string;
+  clinvarId?: string;
+  dbsnpId?: string;
+}
+
+export interface ProteinAnnotations {
+  pdbId: string;
+  uniprotAccession?: string;
+  entryName?: string;
+  proteinName: string;
+  geneName?: string;
+  organism: string;
+  functionSummary?: string;
+  activeSites: ActiveSiteAnnotation[];
+  disulfideBonds: DisulfideAnnotation[];
+  variants: ClinvarVariantAnnotation[];
+}
+
+export interface BookmarkAnnotation {
+  id: string;
+  projectId?: string;
+  userId?: string;
+  pdbId: string;
+  chain: string;
+  residueNumber: number;
+  positionXyz?: { x: number; y: number; z: number };
+  note: string;
+  color: string;
+  createdAt: string;
+  updatedAt?: string;
 }

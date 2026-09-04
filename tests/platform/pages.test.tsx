@@ -37,9 +37,9 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe("soft platform screens", () => {
   it("has a real static landing preview, valid CTAs, heading focus and no canvas", () => {
     show(Landing, "/");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Explore molecular structures.With clarity.");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Agents don't need to see your screen.They need hands.");
     expect(screen.getByRole("heading", { level: 1 })).toHaveFocus();
-    expect(document.title).toBe("Explore molecular structures · BioFold 3D");
+    expect(document.title).toBe("A molecular workspace agents can actually use · BioFold 3D");
     expect(screen.getByRole("img", { name: /^Actual BioFold view of 4HHB/ })).toHaveAttribute("src", "/4hhb-preview.png");
     expect(within(screen.getByRole("banner")).getByRole("link", { name: "Create account" })).toHaveAttribute("href", "/signup");
     expect(document.querySelector("canvas")).toBeNull();

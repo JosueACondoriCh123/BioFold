@@ -1,4 +1,4 @@
-﻿.bf-workbench-container {
+.bf-workbench-container {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   gap: 12px;
@@ -19,7 +19,8 @@
   border: 1px solid var(--line, #24352e);
   border-radius: var(--radius, 12px);
   scrollbar-width: thin;
-  scrollbar-color: #285248 transparent;
+  scrollbar-color: #9f9f9f #2c2c2c;
+  scrollbar-gutter: stable;
 }
 
 .bf-workbench-target-box {
@@ -166,7 +167,8 @@
   border: 1px solid var(--line, #24352e);
   border-radius: var(--radius, 12px);
   scrollbar-width: thin;
-  scrollbar-color: #285248 transparent;
+  scrollbar-color: #9f9f9f #2c2c2c;
+  scrollbar-gutter: stable;
 }
 
 .bf-seq-track-card {

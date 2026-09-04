@@ -1,0 +1,237 @@
+/* BioFold 3D: Universal Biological Search CSS */
+
+.bf-universal-search-container {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+}
+
+.bf-universal-search-form {
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 100%;
+  background: #0a1310;
+  border: 1px solid var(--bf-line, #1e2c26);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.bf-universal-search-form:focus-within {
+  border-color: var(--bf-accent, #5ccfb5);
+  box-shadow: 0 0 0 2px rgba(92, 207, 181, 0.15);
+}
+
+.bf-search-leading-icon {
+  margin-left: 12px;
+  color: var(--bf-muted, #79918b);
+  flex-shrink: 0;
+}
+
+.bf-universal-search-input {
+  flex: 1;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+  min-width: 0;
+}
+
+.bf-universal-search-input::placeholder {
+  color: #556c66;
+}
+
+.bf-search-trailing-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 6px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.bf-search-clear-btn {
+  position: static !important;
+  transform: none !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--bf-muted, #79918b);
+  cursor: pointer;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.bf-search-clear-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.bf-search-shortcut-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--bf-muted, #79918b);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--bf-line, #1e2c26);
+  border-radius: 4px;
+  user-select: none;
+}
+
+.bf-search-submit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  background: var(--bf-panel, #111a18);
+  border: 1px solid var(--bf-line, #1e2c26);
+  border-radius: 6px;
+  color: var(--bf-accent, #5ccfb5);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.bf-search-submit-btn:hover:not(:disabled) {
+  background: rgba(92, 207, 181, 0.15);
+  border-color: var(--bf-accent, #5ccfb5);
+  color: #fff;
+}
+
+.bf-search-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Autocomplete Dropdown */
+.bf-search-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #0d1714;
+  border: 1px solid var(--bf-line, #1e2c26);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+  max-height: 380px;
+  overflow-y: auto;
+  z-index: 1000;
+  padding: 6px;
+}
+
+.bf-search-dropdown-header {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--bf-muted, #79918b);
+}
+
+.bf-search-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.bf-search-item:hover,
+.bf-search-item.is-focused {
+  background: rgba(92, 207, 181, 0.08);
+}
+
+.bf-search-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.bf-search-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.bf-search-item-id {
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.bf-search-item-name {
+  font-size: 12px;
+  color: var(--bf-text, #e8eeea);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bf-search-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--bf-muted, #79918b);
+}
+
+.bf-search-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.bf-search-badge.is-rcsb {
+  background: rgba(66, 153, 225, 0.15);
+  border: 1px solid rgba(66, 153, 225, 0.3);
+  color: #63b3ed;
+}
+
+.bf-search-badge.is-alphafold {
+  background: rgba(72, 187, 120, 0.15);
+  border: 1px solid rgba(72, 187, 120, 0.3);
+  color: #68d391;
+}
+
+.bf-search-badge.is-catalog {
+  background: rgba(183, 148, 244, 0.15);
+  border: 1px solid rgba(183, 148, 244, 0.3);
+  color: #b794f4;
+}
+
+.bf-search-loading-row,
+.bf-search-empty-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  font-size: 12px;
+  color: var(--bf-muted, #79918b);
+}

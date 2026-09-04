@@ -21,10 +21,29 @@ const validInputs = {
     toAminoAcid: "w",
   },
   reset_workspace: { scope: "view" },
+  export_publication_figure: { resolution: "4k", background: "transparent", format: "png" },
+  annotate_active_site: {
+    chain: "a",
+    residueNumber: 41,
+    note: "Active site base",
+    color: "#5ccfb5",
+  },
+  query_uniprot_annotations: {
+    pdbId: "1crn",
+    highlightInViewer: true,
+  },
+  compare_structures_rmsd: {
+    referencePdbId: "6lu7",
+    mobilePdbId: "1crn",
+  },
+  save_project_snapshot: {
+    title: "Test Snapshot",
+    description: "Contract test",
+  },
 } as const;
 
 describe("command contracts", () => {
-  it("defines exactly eight strict JSON schemas with behavioral annotations", () => {
+  it("defines exactly thirteen strict JSON schemas with behavioral annotations", () => {
     expect(Object.keys(COMMAND_CONTRACTS)).toEqual(COMMAND_NAMES);
     for (const name of COMMAND_NAMES) {
       const contract = COMMAND_CONTRACTS[name];
@@ -40,6 +59,8 @@ describe("command contracts", () => {
     expect(COMMAND_CONTRACTS.get_structure_summary.annotations.readOnlyHint).toBe(true);
     expect(COMMAND_CONTRACTS.load_structure.annotations.openWorldHint).toBe(true);
     expect(COMMAND_CONTRACTS.reset_workspace.annotations.destructiveHint).toBe(true);
+    expect(COMMAND_CONTRACTS.export_publication_figure.annotations.readOnlyHint).toBe(true);
+    expect(COMMAND_CONTRACTS.compare_structures_rmsd.annotations.readOnlyHint).toBe(true);
   });
 
   it("parses every valid command and rejects unsupported top-level properties", () => {

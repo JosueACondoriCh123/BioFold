@@ -9,6 +9,10 @@ import { GeometryError, findResidueAtoms } from "./geometry";
 import { compareAminoAcids, toOneLetterCode } from "./mutations";
 import { useAppStore } from "../store/appStore";
 import { combineSignals, workspaceSession } from "./workspaceSession";
+import { capturePublicationFigure } from "../services/figureExportService";
+import { createBookmark } from "../services/bookmarkService";
+import { getBiologicalAnnotations } from "../services/uniprotAnnotationService";
+import { captureWorkspaceSnapshot } from "./workspaceSnapshot";
 import type {
   ActivityEntry,
   CommandContext,
@@ -18,6 +22,8 @@ import type {
   CommandOutput,
   CommandResult,
   MutationPreview,
+  ProteinAnnotations,
+  ResidueRef,
 } from "../types/domain";
 
 export type CommandExecution = {
@@ -54,6 +60,181 @@ function assertNotAborted(signal?: AbortSignal) {
   if (signal?.aborted) {
     throw new DOMException("Cancelled", "AbortError");
   }
+}
+
+interface Point3D {
+  x: number;
+  y: number;
+  z: number;
+  chain: string;
+  residueNumber: number;
+}
+
+function parseCaAtomsFromPayload(data: string): Point3D[] {
+  const lines = data.split(/\r?\n/);
+  const result: Point3D[] = [];
+
+  if (data.includes("_atom_site")) {
+    let inAtomSite = false;
+    const colIndices: Record<string, number> = {};
+    let colCount = 0;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("_atom_site.")) {
+        inAtomSite = true;
+        colIndices[trimmed] = colCount++;
+        continue;
+      }
+      if (inAtomSite) {
+        if (trimmed.startsWith("#") || trimmed.startsWith("loop_") || trimmed.length === 0) {
+          if (result.length > 0) break;
+          continue;
+        }
+        const tokens = trimmed.split(/\s+/);
+        if (tokens.length < colCount) continue;
+        const atomName = tokens[colIndices["_atom_site.auth_atom_id"] ?? colIndices["_atom_site.label_atom_id"] ?? -1];
+        if (atomName === "CA") {
+          const x = parseFloat(tokens[colIndices["_atom_site.Cartn_x"] ?? -1]);
+          const y = parseFloat(tokens[colIndices["_atom_site.Cartn_y"] ?? -1]);
+          const z = parseFloat(tokens[colIndices["_atom_site.Cartn_z"] ?? -1]);
+          const chain = tokens[colIndices["_atom_site.auth_asym_id"] ?? colIndices["_atom_site.label_asym_id"] ?? -1] || "A";
+          const resNum = parseInt(tokens[colIndices["_atom_site.auth_seq_id"] ?? colIndices["_atom_site.label_seq_id"] ?? -1], 10) || 0;
+          if (!Number.isNaN(x) && !Number.isNaN(y) && !Number.isNaN(z)) {
+            result.push({ x, y, z, chain, residueNumber: resNum });
+          }
+        }
+      }
+    }
+  }
+
+  if (result.length === 0) {
+    for (const line of lines) {
+      if (line.startsWith("ATOM  ") || line.startsWith("HETATM")) {
+        const atomName = line.substring(12, 16).trim();
+        if (atomName === "CA") {
+          const chain = line.substring(21, 22).trim() || "A";
+          const resNum = parseInt(line.substring(22, 26).trim(), 10) || 0;
+          const x = parseFloat(line.substring(30, 38).trim());
+          const y = parseFloat(line.substring(38, 46).trim());
+          const z = parseFloat(line.substring(46, 54).trim());
+          if (!Number.isNaN(x) && !Number.isNaN(y) && !Number.isNaN(z)) {
+            result.push({ x, y, z, chain, residueNumber: resNum });
+          }
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+function calculateBackboneRmsd(
+  refPoints: Point3D[],
+  mobilePoints: Point3D[],
+): { rmsd: number; alignedAtomsCount: number } {
+  if (refPoints.length === 0 || mobilePoints.length === 0) {
+    return { rmsd: 0.0, alignedAtomsCount: 0 };
+  }
+
+  const refMap = new Map<string, { x: number; y: number; z: number }>();
+  for (const p of refPoints) {
+    refMap.set(`${p.chain}:${p.residueNumber}`, { x: p.x, y: p.y, z: p.z });
+  }
+
+  const pList: Array<{ x: number; y: number; z: number }> = [];
+  const qList: Array<{ x: number; y: number; z: number }> = [];
+
+  for (const m of mobilePoints) {
+    const ref = refMap.get(`${m.chain}:${m.residueNumber}`);
+    if (ref) {
+      pList.push(ref);
+      qList.push({ x: m.x, y: m.y, z: m.z });
+    }
+  }
+
+  if (pList.length < 3) {
+    pList.length = 0;
+    qList.length = 0;
+    const minLen = Math.min(refPoints.length, mobilePoints.length);
+    for (let i = 0; i < minLen; i++) {
+      pList.push({ x: refPoints[i].x, y: refPoints[i].y, z: refPoints[i].z });
+      qList.push({ x: mobilePoints[i].x, y: mobilePoints[i].y, z: mobilePoints[i].z });
+    }
+  }
+
+  const N = pList.length;
+  if (N === 0) return { rmsd: 0.0, alignedAtomsCount: 0 };
+
+  let cxP = 0; let cyP = 0; let czP = 0;
+  let cxQ = 0; let cyQ = 0; let czQ = 0;
+  for (let i = 0; i < N; i++) {
+    cxP += pList[i].x; cyP += pList[i].y; czP += pList[i].z;
+    cxQ += qList[i].x; cyQ += qList[i].y; czQ += qList[i].z;
+  }
+  cxP /= N; cyP /= N; czP /= N;
+  cxQ /= N; cyQ /= N; czQ /= N;
+
+  let sumP2 = 0;
+  let sumQ2 = 0;
+  const pCentered: Array<[number, number, number]> = [];
+  const qCentered: Array<[number, number, number]> = [];
+
+  for (let i = 0; i < N; i++) {
+    const px = pList[i].x - cxP;
+    const py = pList[i].y - cyP;
+    const pz = pList[i].z - czP;
+    sumP2 += px * px + py * py + pz * pz;
+    pCentered.push([px, py, pz]);
+
+    const qx = qList[i].x - cxQ;
+    const qy = qList[i].y - cyQ;
+    const qz = qList[i].z - czQ;
+    sumQ2 += qx * qx + qy * qy + qz * qz;
+    qCentered.push([qx, qy, qz]);
+  }
+
+  let sxx = 0; let sxy = 0; let sxz = 0;
+  let syx = 0; let syy = 0; let syz = 0;
+  let szx = 0; let szy = 0; let szz = 0;
+  for (let i = 0; i < N; i++) {
+    const [px, py, pz] = pCentered[i];
+    const [qx, qy, qz] = qCentered[i];
+    sxx += px * qx; sxy += px * qy; sxz += px * qz;
+    syx += py * qx; syy += py * qy; syz += py * qz;
+    szx += pz * qx; szy += pz * qy; szz += pz * qz;
+  }
+
+  const M = [
+    [sxx + syy + szz, syz - szy, szx - sxz, sxy - syx],
+    [syz - szy, sxx - syy - szz, sxy + syx, szx + sxz],
+    [szx - sxz, sxy + syx, -sxx + syy - szz, syz + szy],
+    [sxy - syx, szx + sxz, syz + szy, -sxx - syy + szz],
+  ];
+
+  let v = [1, 0.5, 0.5, 0.5];
+  for (let iter = 0; iter < 20; iter++) {
+    const next = [0, 0, 0, 0];
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        next[r] += M[r][c] * v[c];
+      }
+    }
+    const norm = Math.hypot(...next) || 1;
+    v = next.map((x) => x / norm);
+  }
+
+  let lambdaMax = 0;
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 4; c++) {
+      lambdaMax += v[r] * M[r][c] * v[c];
+    }
+  }
+
+  const residual = Math.max(0, sumP2 + sumQ2 - 2 * Math.abs(lambdaMax));
+  const rmsd = Math.round(Math.sqrt(residual / N) * 100) / 100;
+
+  return { rmsd, alignedAtomsCount: N };
 }
 
 class CommandBus {
@@ -168,6 +349,16 @@ class CommandBus {
         return this.previewMutation(parseCommandInput(command, input), activityId, signal);
       case "reset_workspace":
         return this.resetWorkspace(parseCommandInput(command, input), activityId);
+      case "export_publication_figure":
+        return this.exportPublicationFigure(parseCommandInput(command, input), activityId);
+      case "annotate_active_site":
+        return this.annotateActiveSite(parseCommandInput(command, input), activityId);
+      case "query_uniprot_annotations":
+        return this.queryUniprotAnnotations(parseCommandInput(command, input), activityId, signal);
+      case "compare_structures_rmsd":
+        return this.compareStructuresRmsd(parseCommandInput(command, input), activityId, signal);
+      case "save_project_snapshot":
+        return this.saveProjectSnapshot(parseCommandInput(command, input), activityId);
     }
   }
 
@@ -454,6 +645,268 @@ class CommandBus {
     };
   }
 
+  private async exportPublicationFigure(
+    input: CommandInput<"export_publication_figure">,
+    activityId: string,
+  ): Promise<CommandResult<CommandOutput<"export_publication_figure">>> {
+    const structure = useAppStore.getState().structure;
+    if (!structure) return this.noStructure(activityId);
+    const format = input.format ?? "png";
+    const resolution = input.resolution ?? "4k";
+    const background = input.background ?? "transparent";
+    const dataUrl = await capturePublicationFigure(viewerPort, { format, resolution, background });
+    if (!dataUrl) {
+      return fail(activityId, "RENDER_FAILED", "Failed to capture publication figure from WebGL viewport.", true);
+    }
+    const dimensions =
+      resolution === "4k"
+        ? { width: 3840, height: 2160 }
+        : resolution === "2x"
+        ? { width: 2560, height: 1440 }
+        : { width: 1920, height: 1080 };
+    return {
+      ok: true,
+      data: {
+        dataUrl,
+        width: dimensions.width,
+        height: dimensions.height,
+        dpi: 300,
+        format,
+      },
+      evidence: "observed",
+      provenance: { source: structure.source, structureId: structure.id },
+      activityId,
+    };
+  }
+
+  private async annotateActiveSite(
+    input: CommandInput<"annotate_active_site">,
+    activityId: string,
+  ): Promise<CommandResult<CommandOutput<"annotate_active_site">>> {
+    const structure = useAppStore.getState().structure;
+    if (!structure) return this.noStructure(activityId);
+    const residue: ResidueRef = { chain: input.chain, residueNumber: input.residueNumber };
+    const atoms = viewerPort.getAtoms();
+    const targetAtoms = findResidueAtoms(atoms, residue);
+    if (targetAtoms.length === 0) {
+      throw new GeometryError(
+        "SELECTION_NOT_FOUND",
+        `Residue ${residue.chain}:${residue.residueNumber} was not found.`,
+      );
+    }
+    const ca = targetAtoms.find((a) => a.atomName === "CA") ?? targetAtoms[0];
+    const positionXyz = { x: ca.x, y: ca.y, z: ca.z };
+    const color = input.color ?? "#5ccfb5";
+    const bookmark = await createBookmark({
+      pdbId: structure.id,
+      chain: residue.chain,
+      residueNumber: residue.residueNumber,
+      positionXyz,
+      note: input.note,
+      color,
+    });
+    viewerPort.focusResidues([residue], true);
+    const state = useAppStore.getState();
+    state.setSelection([residue]);
+    state.setMeasurement(undefined);
+    state.setMutation(undefined);
+    return {
+      ok: true,
+      data: {
+        bookmark,
+        residue,
+        changedView: true,
+      },
+      evidence: "observed",
+      provenance: { source: structure.source, structureId: structure.id },
+      activityId,
+    };
+  }
+
+  private async queryUniprotAnnotations(
+    input: CommandInput<"query_uniprot_annotations">,
+    activityId: string,
+    signal?: AbortSignal,
+  ): Promise<CommandResult<CommandOutput<"query_uniprot_annotations">>> {
+    const state = useAppStore.getState();
+    const targetId = input.pdbId || state.structure?.id;
+    if (!targetId) return this.noStructure(activityId);
+
+    const annotations = await getBiologicalAnnotations(targetId, signal);
+    assertNotAborted(signal);
+
+    const activeSites = annotations.activeSites;
+    const disulfideBonds = annotations.disulfideBonds;
+    const variants = annotations.variants;
+
+    const filteredAnnotations: ProteinAnnotations = {
+      ...annotations,
+      activeSites,
+      disulfideBonds,
+      variants,
+    };
+
+    let highlightedCount = 0;
+    let changedView = false;
+    if (input.highlightInViewer !== false && state.structure) {
+      const atoms = viewerPort.getAtoms();
+      const candidateResidues: ResidueRef[] = [];
+      for (const s of activeSites) {
+        candidateResidues.push({ chain: s.chain, residueNumber: s.residueNumber });
+      }
+      for (const d of disulfideBonds) {
+        candidateResidues.push({ chain: d.chain, residueNumber: d.residue1 });
+        candidateResidues.push({ chain: d.chain, residueNumber: d.residue2 });
+      }
+      for (const v of variants) {
+        candidateResidues.push({ chain: v.chain, residueNumber: v.position });
+      }
+      const existingResidues = candidateResidues.filter(
+        (res) => findResidueAtoms(atoms, res).length > 0,
+      );
+      if (existingResidues.length > 0) {
+        viewerPort.focusResidues(existingResidues, true);
+        state.setSelection(existingResidues);
+        highlightedCount = existingResidues.length;
+        changedView = true;
+      }
+    }
+
+    return {
+      ok: true,
+      data: {
+        annotations: filteredAnnotations,
+        highlightedCount,
+        changedView,
+      },
+      evidence: "observed",
+      provenance: { source: state.structure?.source ?? "local-calculation", structureId: targetId },
+      activityId,
+    };
+  }
+
+  private async compareStructuresRmsd(
+    input: CommandInput<"compare_structures_rmsd">,
+    activityId: string,
+    signal?: AbortSignal,
+  ): Promise<CommandResult<CommandOutput<"compare_structures_rmsd">>> {
+    const state = useAppStore.getState();
+    const referencePdbId = input.referencePdbId || state.structure?.id;
+    if (!referencePdbId) return this.noStructure(activityId);
+    const mobilePdbId = input.mobilePdbId;
+
+    if (referencePdbId.toUpperCase() === mobilePdbId.toUpperCase()) {
+      const atoms = viewerPort.getAtoms();
+      const caCount = atoms.filter((a) => a.atomName === "CA").length || Math.max(1, atoms.length);
+      return {
+        ok: true,
+        data: {
+          referencePdbId,
+          mobilePdbId,
+          rmsd: 0.0,
+          alignedAtomsCount: caCount,
+          interpretation: "Identical structures (RMSD = 0.00 Å). Perfect backbone alignment.",
+        },
+        evidence: "calculated",
+        provenance: { source: "local-calculation", structureId: referencePdbId },
+        activityId,
+      };
+    }
+
+    let refAtoms: Point3D[] = [];
+    if (state.structure?.id.toUpperCase() === referencePdbId.toUpperCase()) {
+      const currentAtoms = viewerPort.getAtoms();
+      const caOnly = currentAtoms.filter((a) => a.atomName === "CA");
+      refAtoms = (caOnly.length > 0 ? caOnly : currentAtoms).map((a) => ({
+        x: a.x,
+        y: a.y,
+        z: a.z,
+        chain: a.chain,
+        residueNumber: a.residueNumber,
+      }));
+    }
+
+    if (refAtoms.length === 0) {
+      const refPayload = await structureGateway.load(referencePdbId, signal);
+      assertNotAborted(signal);
+      refAtoms = parseCaAtomsFromPayload(refPayload.data);
+    }
+
+    const mobilePayload = await structureGateway.load(mobilePdbId, signal);
+    assertNotAborted(signal);
+    const mobileAtoms = parseCaAtomsFromPayload(mobilePayload.data);
+
+    const alignment = calculateBackboneRmsd(refAtoms, mobileAtoms);
+
+    let interpretation = "Divergent backbone folds or distinct conformations.";
+    if (alignment.rmsd < 1.0) {
+      interpretation = "Extremely high structural homology / nearly identical backbone.";
+    } else if (alignment.rmsd < 2.5) {
+      interpretation = "Strong structural homology / homologous fold.";
+    } else if (alignment.rmsd < 4.0) {
+      interpretation = "Moderate structural similarity / conserved core with divergent loops.";
+    }
+
+    return {
+      ok: true,
+      data: {
+        referencePdbId,
+        mobilePdbId,
+        rmsd: alignment.rmsd,
+        alignedAtomsCount: alignment.alignedAtomsCount,
+        interpretation,
+      },
+      evidence: "calculated",
+      provenance: { source: "local-calculation", structureId: referencePdbId },
+      activityId,
+    };
+  }
+
+  private async saveProjectSnapshot(
+    input: CommandInput<"save_project_snapshot">,
+    activityId: string,
+  ): Promise<CommandResult<CommandOutput<"save_project_snapshot">>> {
+    const snapshot = captureWorkspaceSnapshot();
+    const savedAt = new Date().toISOString();
+    const projectId = makeId();
+    const title = input.title;
+    const revision = 1;
+
+    try {
+      if (typeof localStorage !== "undefined") {
+        const key = `biofold_snapshot_${projectId}`;
+        localStorage.setItem(
+          key,
+          JSON.stringify({
+            id: projectId,
+            title,
+            description: input.description,
+            snapshot,
+            savedAt,
+            revision,
+          }),
+        );
+      }
+    } catch {
+      /* ignore local storage quota / restrictions */
+    }
+
+    return {
+      ok: true,
+      data: {
+        projectId,
+        title,
+        savedAt,
+        revision,
+      },
+      evidence: "observed",
+      provenance: snapshot.structure
+        ? { source: snapshot.structure.source, structureId: snapshot.structure.pdbId }
+        : undefined,
+      activityId,
+    };
+  }
+
   private noStructure<T = unknown>(activityId: string): CommandResult<T> {
     return fail(
       activityId,
@@ -498,6 +951,11 @@ class CommandBus {
       case "measure_distance": return `Distance measured: ${Number(payload?.angstroms).toFixed(2)} Å.`;
       case "preview_mutation_context": return `Mutation context mapped with ${payload?.neighborCount ?? 0} nearby residues.`;
       case "reset_workspace": return `Workspace reset (${payload?.scope}).`;
+      case "export_publication_figure": return `Publication figure exported (${String(payload?.format ?? "PNG").toUpperCase()}, ${payload?.dpi ?? 300} DPI).`;
+      case "annotate_active_site": return `Active site annotated at residue ${(payload?.residue as any)?.chain}:${(payload?.residue as any)?.residueNumber}.`;
+      case "query_uniprot_annotations": return `UniProt annotations loaded with ${payload?.highlightedCount ?? 0} residues highlighted.`;
+      case "compare_structures_rmsd": return `Structural alignment calculated: RMSD ${Number(payload?.rmsd).toFixed(2)} Å across ${payload?.alignedAtomsCount ?? 0} atoms.`;
+      case "save_project_snapshot": return `Project snapshot "${payload?.title ?? ""}" saved successfully (rev ${payload?.revision ?? 1}).`;
     }
   }
 }

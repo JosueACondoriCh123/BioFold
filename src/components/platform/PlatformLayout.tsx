@@ -1,15 +1,70 @@
-import { useEffect, useRef, type ReactNode } from "react";
-import { ArrowUpRight, Dna, FlaskConical, ShieldCheck } from "lucide-react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
+import { ArrowUpRight, ShieldCheck } from "lucide-react";
 import { Link, NavLink } from "react-router";
+import { UserMenuDropdown } from "../navigation/UserMenuDropdown";
+import { NotificationsDropdown } from "../navigation/NotificationsDropdown";
+import { CommandPaletteModal, CommandPaletteTrigger } from "../navigation/CommandPaletteModal";
 
 export function Brand({ to = "/" }: { to?: string }) {
-  return <Link className="bf-brand" to={to} aria-label="BioFold 3D home"><span className="bf-brand-icon"><Dna size={23} strokeWidth={1.8} aria-hidden="true" /></span><span>BioFold<span className="bf-brand-suffix">3D</span></span></Link>;
+  return (
+    <Link className="bf-brand" to={to} aria-label="BioFold 3D home">
+      <span className="bf-brand-icon">
+        <img
+          src="/logo.png"
+          alt=""
+          aria-hidden="true"
+          className="bf-brand-img"
+          width="38"
+          height="38"
+        />
+      </span>
+      <span>
+        BioFold<span className="bf-brand-suffix">3D</span>
+      </span>
+    </Link>
+  );
 }
 
 export function WorkspaceNav() {
-  return <header className="bf-workspace-header"><Brand to="/app" /><nav aria-label="Workspace navigation">
-    <NavLink to="/app" end>Home</NavLink><NavLink to="/app/lab">Laboratory</NavLink><NavLink to="/app/vision">Multimodal Vision</NavLink><NavLink to="/app/account">Account</NavLink>
-  </nav><span className="bf-header-note"><FlaskConical size={14} aria-hidden="true" /> Molecular workspace</span></header>;
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  // Global Ctrl+K / Cmd+K listener
+  useEffect(() => {
+    function handleGlobalKeyDown(e: globalThis.KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        if (
+          document.activeElement?.tagName !== "INPUT" &&
+          document.activeElement?.tagName !== "TEXTAREA"
+        ) {
+          e.preventDefault();
+          setIsCommandPaletteOpen((prev) => !prev);
+        }
+      }
+    }
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
+
+  return (
+    <header className="bf-workspace-header">
+      <Brand to="/app" />
+      <nav aria-label="Workspace navigation">
+        <NavLink to="/app" end>Home</NavLink>
+        <NavLink to="/app/lab">Laboratory</NavLink>
+        <NavLink to="/app/vision">Multimodal Vision</NavLink>
+        <NavLink to="/app/account">Account</NavLink>
+      </nav>
+      <div className="bf-workspace-header-actions">
+        <CommandPaletteTrigger onOpen={() => setIsCommandPaletteOpen(true)} />
+        <NotificationsDropdown />
+        <UserMenuDropdown />
+      </div>
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+      />
+    </header>
+  );
 }
 
 export function PlatformPage({ name, title, children }: { name: string; title: string; children: ReactNode }) {
@@ -23,9 +78,9 @@ export function PlatformPage({ name, title, children }: { name: string; title: s
   return <div ref={root} className={`platform-root bf-page bf-${name}`} data-page={name}>{children}</div>;
 }
 
-export function PublicHeader() {
-  return <header className="bf-public-header"><Brand /><nav aria-label="Main navigation">
-    <a className="bf-desktop-link" href="/#explore">Explore</a><a className="bf-desktop-link" href="/#collaborate">Human + agent</a>
+export function PublicHeader({ overlay = false }: { overlay?: boolean } = {}) {
+  return <header className={`bf-public-header${overlay ? " bf-public-header-overlay" : ""}`}><Brand /><nav aria-label="Main navigation">
+    <a className="bf-desktop-link" href="/#explore">Explore</a><a className="bf-desktop-link" href="/#architecture">Architecture</a><a className="bf-desktop-link" href="/#tools">Tools</a>
     <Link to="/login">Sign in</Link><Link className="bf-button bf-button-small" to="/signup">Create account <ArrowUpRight size={15} aria-hidden="true" /></Link>
   </nav></header>;
 }

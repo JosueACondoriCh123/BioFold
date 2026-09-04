@@ -12,6 +12,7 @@ import "./platform.css";
 
 const Laboratory = lazy(() => import("./Laboratory"));
 const DefaultVisionStudioPage = lazy(() => import("./pages/VisionStudioPage"));
+const SharedProjectPage = lazy(() => import("./pages/SharedProjectPage"));
 
 function RecoveryGate({ auth, children }: { auth: AuthContextValue; children: ReactNode }) {
   const { state } = auth;
@@ -133,6 +134,7 @@ export default function App({ auth, pages }: { auth: AuthContextValue; pages: Pl
         <Route path="/app/lab" element={protect(null)} />
         <Route path="/app/vision" element={protect(<VisionStudioPage />)} />
         <Route path="/app/account" element={protect(<AccountPage />)} />
+        <Route path="/share/:shareToken" element={<SharedProjectPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>

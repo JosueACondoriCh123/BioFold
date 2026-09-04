@@ -12,10 +12,15 @@ const samples = {
   measure_distance: { from: { chain: "A", residueNumber: 1, atomName: "ca" }, to: { chain: "A", residueNumber: 10, atomName: "CA" } },
   preview_mutation_context: { residue: { chain: "A", residueNumber: 10 }, toAminoAcid: "w" },
   reset_workspace: { scope: "view" },
+  export_publication_figure: { resolution: "4k", background: "transparent", format: "png" },
+  annotate_active_site: { chain: "A", residueNumber: 41, note: "Catalytic His41", color: "#5ccfb5" },
+  query_uniprot_annotations: { pdbId: "1CRN", highlightInViewer: true },
+  compare_structures_rmsd: { referencePdbId: "6LU7", mobilePdbId: "1CRN" },
+  save_project_snapshot: { title: "Test Snapshot", description: "Edge test" },
 } as const;
 
 describe("Assistant Edge contracts", () => {
-  it("cannot drift from the eight audited browser commands", () => {
+  it("cannot drift from the thirteen audited browser commands", () => {
     expect(AUDITED_COMMANDS).toEqual(COMMAND_NAMES);
     for (const command of COMMAND_NAMES) {
       const expected = parseCommandInput(command, samples[command]);

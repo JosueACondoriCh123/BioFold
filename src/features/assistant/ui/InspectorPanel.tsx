@@ -16,29 +16,44 @@ export interface InspectorPanelProps {
   assistantClient: AssistantClient;
   assistantConversations?: AssistantConversationPort;
   assistantEnabled?: boolean;
+  hideAssistantTab?: boolean;
   projectId?: string;
   defaultTab?: InspectorTabId;
+  pdbId?: string;
   summary?: StructureSummary | null;
   measurement?: DistanceMeasurement | null;
   mutation?: MutationPreview | null;
   activityEntries?: ActivityEntry[];
+  selectedResidue?: { chain: string; residueNumber: number } | null;
   onApplyProposal?: ApplyProposalHandler;
+  onHighlightResidues?: (residues: { chain: string; residueNumber: number }[]) => void;
+  onInspectMutation?: (position: number, wildType: string, mutant: string) => void;
+  onFlyToResidue?: (chain: string, residueNumber: number, color?: string) => void;
   resultsContent?: ReactNode;
   className?: string;
+  /** Lets the workspace shrink the grid column, not just the panel inside it. */
+  onCollapsedChange?: (collapsed: boolean) => void;
 }
 
 export function InspectorPanel({
   assistantClient,
   assistantConversations,
   assistantEnabled = true,
+  hideAssistantTab = false,
   projectId = "default-project",
   defaultTab = "results",
+  pdbId,
   summary,
   measurement,
   mutation,
   activityEntries = [],
+  selectedResidue,
   onApplyProposal,
+  onHighlightResidues,
+  onInspectMutation,
+  onFlyToResidue,
   resultsContent,
+  onCollapsedChange,
   className = "",
 }: InspectorPanelProps) {
   const [activeTab, setActiveTab] = useState<InspectorTabId>(defaultTab);
@@ -49,6 +64,7 @@ export function InspectorPanel({
 
   // Keyboard navigation for tabs
   function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, current: InspectorTabId) {
+    if (hideAssistantTab) return;
     if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
       event.preventDefault();
       const nextTab: InspectorTabId = current === "results" ? "assistant" : "results";
@@ -72,7 +88,7 @@ export function InspectorPanel({
       aria-label="Workspace Inspector and Assistant"
     >
       <div className="bf-inspector-topbar">
-        <div
+        {!isCollapsed && <div
           role="tablist"
           aria-label="Inspector Views"
           className="bf-inspector-tabs"
@@ -94,28 +110,34 @@ export function InspectorPanel({
             {(measurement || mutation) && <span className="bf-tab-pulse-dot" aria-hidden="true" />}
           </button>
 
-          <button
-            ref={tabAssistantRef}
-            type="button"
-            role="tab"
-            id="tab-assistant"
-            aria-selected={activeTab === "assistant"}
-            aria-controls="panel-assistant"
-            tabIndex={activeTab === "assistant" ? 0 : -1}
-            className={`bf-inspector-tab ${activeTab === "assistant" ? "is-active" : ""}`}
-            onClick={() => { setActiveTab("assistant"); if (isCollapsed) setIsCollapsed(false); }}
-            onKeyDown={(e) => handleTabKeyDown(e, "assistant")}
-          >
-            <Bot size={15} aria-hidden="true" />
-            <span>Assistant</span>
-            <span className="bf-tab-ai-badge">AI</span>
-          </button>
-        </div>
+          {!hideAssistantTab && (
+            <button
+              ref={tabAssistantRef}
+              type="button"
+              role="tab"
+              id="tab-assistant"
+              aria-selected={activeTab === "assistant"}
+              aria-controls="panel-assistant"
+              tabIndex={activeTab === "assistant" ? 0 : -1}
+              className={`bf-inspector-tab ${activeTab === "assistant" ? "is-active" : ""}`}
+              onClick={() => { setActiveTab("assistant"); if (isCollapsed) setIsCollapsed(false); }}
+              onKeyDown={(e) => handleTabKeyDown(e, "assistant")}
+            >
+              <Bot size={15} aria-hidden="true" />
+              <span>Assistant</span>
+              <span className="bf-tab-ai-badge">AI</span>
+            </button>
+          )}
+        </div>}
 
         <button
           type="button"
           className="bf-collapse-toggle-btn"
-          onClick={() => setIsCollapsed(!isCollapsed)}
+          onClick={() => {
+            const next = !isCollapsed;
+            setIsCollapsed(next);
+            onCollapsedChange?.(next);
+          }}
           aria-label={isCollapsed ? "Expand inspector panel" : "Collapse inspector panel"}
           title={isCollapsed ? "Expand panel" : "Collapse panel"}
         >
@@ -134,10 +156,16 @@ export function InspectorPanel({
           >
             {resultsContent ?? (
               <ResultsTab
+                pdbId={pdbId}
+                projectId={projectId}
                 summary={summary}
                 measurement={measurement}
                 mutation={mutation}
                 activityEntries={activityEntries}
+                selectedResidue={selectedResidue}
+                onHighlightResidues={onHighlightResidues}
+                onInspectMutation={onInspectMutation}
+                onFlyToResidue={onFlyToResidue}
               />
             )}
           </div>

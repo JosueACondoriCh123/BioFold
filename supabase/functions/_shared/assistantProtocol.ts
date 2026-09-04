@@ -7,6 +7,11 @@ export const AUDITED_COMMANDS = [
   "measure_distance",
   "preview_mutation_context",
   "reset_workspace",
+  "export_publication_figure",
+  "annotate_active_site",
+  "query_uniprot_annotations",
+  "compare_structures_rmsd",
+  "save_project_snapshot",
 ] as const;
 
 export interface EdgeAssistantRequest {
@@ -115,6 +120,70 @@ function parseCommandInput(command: EdgeCommandProposal["command"], value: unkno
       const input = strictRecord(value, ["scope"], "reset_workspace input");
       if (input.scope !== "view" && input.scope !== "all") throw new Error("scope is invalid.");
       return { scope: input.scope };
+    }
+    case "export_publication_figure": {
+      const input = strictRecord(value, ["resolution", "background", "format"], "export_publication_figure input");
+      if (input.resolution !== undefined && !["1x", "2x", "4k"].includes(String(input.resolution))) {
+        throw new Error("resolution is invalid.");
+      }
+      if (input.background !== undefined && !["white", "transparent", "dark"].includes(String(input.background))) {
+        throw new Error("background is invalid.");
+      }
+      if (input.format !== undefined && !["png", "jpeg"].includes(String(input.format))) {
+        throw new Error("format is invalid.");
+      }
+      return {
+        ...(input.resolution ? { resolution: input.resolution } : {}),
+        ...(input.background ? { background: input.background } : {}),
+        ...(input.format ? { format: input.format } : {}),
+      };
+    }
+    case "annotate_active_site": {
+      const input = strictRecord(value, ["chain", "residueNumber", "note", "color"], "annotate_active_site input");
+      const chain = requiredText(input.chain, "chain", 4).toUpperCase();
+      if (typeof input.residueNumber !== "number" || !Number.isInteger(input.residueNumber)) {
+        throw new Error("residueNumber must be an integer.");
+      }
+      const note = requiredText(input.note, "note", 500);
+      const color = input.color === undefined ? undefined : requiredText(input.color, "color", 7);
+      if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) {
+        throw new Error("color is invalid.");
+      }
+      return {
+        chain,
+        residueNumber: input.residueNumber,
+        note,
+        ...(color ? { color } : {}),
+      };
+    }
+    case "query_uniprot_annotations": {
+      const input = strictRecord(value, ["pdbId", "highlightInViewer"], "query_uniprot_annotations input");
+      const pdbId = input.pdbId === undefined ? undefined : requiredText(input.pdbId, "pdbId", 32).toUpperCase();
+      if (input.highlightInViewer !== undefined && typeof input.highlightInViewer !== "boolean") {
+        throw new Error("highlightInViewer must be a boolean.");
+      }
+      return {
+        ...(pdbId ? { pdbId } : {}),
+        ...(typeof input.highlightInViewer === "boolean" ? { highlightInViewer: input.highlightInViewer } : {}),
+      };
+    }
+    case "compare_structures_rmsd": {
+      const input = strictRecord(value, ["referencePdbId", "mobilePdbId"], "compare_structures_rmsd input");
+      const mobilePdbId = requiredText(input.mobilePdbId, "mobilePdbId", 32).toUpperCase();
+      const referencePdbId = input.referencePdbId === undefined ? undefined : requiredText(input.referencePdbId, "referencePdbId", 32).toUpperCase();
+      return {
+        mobilePdbId,
+        ...(referencePdbId ? { referencePdbId } : {}),
+      };
+    }
+    case "save_project_snapshot": {
+      const input = strictRecord(value, ["title", "description"], "save_project_snapshot input");
+      const title = requiredText(input.title, "title", 120);
+      const description = input.description === undefined ? undefined : requiredText(input.description, "description", 1000);
+      return {
+        title,
+        ...(description ? { description } : {}),
+      };
     }
   }
 }

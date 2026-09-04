@@ -1,0 +1,296 @@
+/* BioFold 3D: Export Figure & Scientific Report Modal */
+
+.bf-export-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.bf-export-modal-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  background: #0f1816;
+  border: 1px solid var(--bf-line, #1e2c26);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+  animation: bfExportFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes bfExportFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.bf-export-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--bf-line, #1e2c26);
+}
+
+.bf-export-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.bf-export-title svg {
+  color: var(--bf-accent, #5ccfb5);
+}
+
+.bf-export-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--bf-muted, #79918b);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+}
+
+.bf-export-close-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Tab Navigation */
+.bf-export-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--bf-line, #1e2c26);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.bf-export-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--bf-muted, #79918b);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bf-export-tab-btn:hover {
+  color: #fff;
+}
+
+.bf-export-tab-btn.is-active {
+  color: var(--bf-accent, #5ccfb5);
+  border-bottom-color: var(--bf-accent, #5ccfb5);
+  background: rgba(92, 207, 181, 0.04);
+}
+
+.bf-export-body {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Figure Tab Preview */
+.bf-export-preview-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  max-height: 280px;
+  border-radius: 8px;
+  border: 1px solid var(--bf-line, #1e2c26);
+  overflow: hidden;
+  position: relative;
+  transition: background-color 0.2s ease;
+}
+
+.bf-export-preview-box.bg-white {
+  background-color: #ffffff;
+}
+
+.bf-export-preview-box.bg-transparent {
+  background-color: #0c1412;
+  background-image: linear-gradient(45deg, #15221e 25%, transparent 25%),
+                    linear-gradient(-45deg, #15221e 25%, transparent 25%),
+                    linear-gradient(45deg, transparent 75%, #15221e 75%),
+                    linear-gradient(-45deg, transparent 75%, #15221e 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+}
+
+.bf-export-preview-box.bg-dark {
+  background-color: #07100f;
+}
+
+.bf-export-preview-img {
+  max-width: 95%;
+  max-height: 250px;
+  object-fit: contain;
+}
+
+/* Options Grid */
+.bf-export-config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.bf-export-option-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bf-export-option-card label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--bf-muted, #79918b);
+  letter-spacing: 0.04em;
+}
+
+.bf-export-btn-group {
+  display: flex;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--bf-line, #1e2c26);
+}
+
+.bf-export-choice-btn {
+  flex: 1;
+  padding: 7px 10px;
+  background: #08110e;
+  border: none;
+  color: var(--bf-muted, #79918b);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.bf-export-choice-btn:not(:last-child) {
+  border-right: 1px solid var(--bf-line, #1e2c26);
+}
+
+.bf-export-choice-btn:hover {
+  color: #fff;
+  background: #15221e;
+}
+
+.bf-export-choice-btn.is-active {
+  background: rgba(92, 207, 181, 0.15);
+  color: var(--bf-accent, #5ccfb5);
+}
+
+/* High-DPI Badge */
+.bf-dpi-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(92, 207, 181, 0.1);
+  border: 1px solid rgba(92, 207, 181, 0.25);
+  color: var(--bf-accent, #5ccfb5);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Report Section Checkboxes */
+.bf-report-sections-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--bf-line, #1e2c26);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.bf-report-sec-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #e8eeea;
+}
+
+.bf-report-sec-item label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* Actions Footer */
+.bf-export-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--bf-line, #1e2c26);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.bf-export-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bf-export-action-btn.primary {
+  background: var(--bf-accent, #5ccfb5);
+  border: 1px solid var(--bf-accent, #5ccfb5);
+  color: #08110e;
+}
+
+.bf-export-action-btn.primary:hover {
+  filter: brightness(1.1);
+}
+
+.bf-export-action-btn.secondary {
+  background: transparent;
+  border: 1px solid var(--bf-line, #1e2c26);
+  color: #e8eeea;
+}
+
+.bf-export-action-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}

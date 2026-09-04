@@ -14,21 +14,35 @@ import type {
   MutationPreview,
   StructureSummary,
 } from "../../../types/domain";
+import { BiologicalAnnotationsSection } from "../../annotations/BiologicalAnnotationsSection";
+import { StructureBookmarksSection } from "../../bookmarks/StructureBookmarksSection";
 
 export interface ResultsTabProps {
+  pdbId?: string;
+  projectId?: string;
   summary?: StructureSummary | null;
   measurement?: DistanceMeasurement | null;
   mutation?: MutationPreview | null;
   activityEntries?: ActivityEntry[];
+  selectedResidue?: { chain: string; residueNumber: number } | null;
+  onHighlightResidues?: (residues: { chain: string; residueNumber: number }[]) => void;
+  onInspectMutation?: (position: number, wildType: string, mutant: string) => void;
+  onFlyToResidue?: (chain: string, residueNumber: number, color?: string) => void;
 }
 
 export function ResultsTab({
+  pdbId,
+  projectId,
   summary,
   measurement,
   mutation,
   activityEntries = [],
+  selectedResidue,
+  onHighlightResidues,
+  onInspectMutation,
+  onFlyToResidue,
 }: ResultsTabProps) {
-  const hasContent = summary || measurement || mutation || activityEntries.length > 0;
+  const hasContent = Boolean(pdbId) || summary || measurement || mutation || activityEntries.length > 0;
 
   if (!hasContent) {
     return (
@@ -156,6 +170,25 @@ export function ResultsTab({
             ))}
           </ul>
         </section>
+      )}
+
+      {/* 5. Live UniProt & ClinVar Biological Annotations */}
+      {pdbId && (
+        <BiologicalAnnotationsSection
+          pdbId={pdbId}
+          onHighlightResidues={onHighlightResidues ?? (() => {})}
+          onInspectMutation={onInspectMutation}
+        />
+      )}
+
+      {/* 6. 3D Notes & Bookmarks */}
+      {pdbId && (
+        <StructureBookmarksSection
+          pdbId={pdbId}
+          projectId={projectId}
+          selectedResidue={selectedResidue}
+          onFlyToResidue={onFlyToResidue ?? (() => {})}
+        />
       )}
     </div>
   );

@@ -13,7 +13,7 @@ test("production landing stays public without loading molecular runtime", async 
     Object.defineProperty(document, "modelContext", { configurable: true, value: { registerTool: () => { (window as unknown as { __uiToolCount: number }).__uiToolCount++; } } });
   });
   await page.goto(PLATFORM_URL);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Explore molecular structures.With clarity.");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Agents don't need to see your screen.They need hands.");
   await expect(page.locator("canvas")).toHaveCount(0);
   expect(molecularRequests).toEqual([]);
   expect(workers).toEqual([]);
@@ -37,6 +37,12 @@ for (const width of [1440, 1000, 720, 390]) {
         await expect(page.locator(".structure-pill strong")).toHaveText("1CRN", { timeout: 20000 });
         await expect(page.locator("canvas")).toBeVisible();
         await expect(page.locator(".loading-overlay")).toHaveCount(0);
+        // The laboratory is a fixed-height workspace: the side columns scroll
+        // internally, so the document itself must never grow past the viewport.
+        expect(
+          await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight),
+          `laboratory grew past the viewport at ${width}`,
+        ).toBeLessThanOrEqual(1);
       } else {
         await expect(page.locator(`[data-page="${name}"]`)).toBeVisible();
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();

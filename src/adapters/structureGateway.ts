@@ -1,5 +1,6 @@
 import type { CommandErrorCode } from "../types/domain";
 import { getCachedStructure, setCachedStructure } from "./structureCache";
+import { downloadStructureFile } from "../services/molecularStorageService";
 
 const FIXTURE_IDS = new Set(["1CRN", "4HHB"]);
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -28,20 +29,20 @@ export function detectStructureFormat(data: string): StructureFormat {
 
 export interface StructurePayload {
   id: string;
-  source: "fixture" | "rcsb" | "custom";
+  source: "fixture" | "rcsb" | "custom" | "alphafold";
   format: StructureFormat;
   data: string;
 }
 
 export function normalizePdbId(input: unknown): string {
   if (typeof input !== "string") {
-    throw new StructureGatewayError("INVALID_INPUT", "PDB ID must be a string.", false);
+    throw new StructureGatewayError("INVALID_INPUT", "Structure ID must be a string.", false);
   }
   const id = input.trim().toUpperCase();
-  if (!/^[A-Z0-9]{4}$/.test(id)) {
+  if (!/^[A-Z0-9]{4}$|^AF-[A-Z0-9_-]+$|^[A-Z0-9]{6,10}$/.test(id)) {
     throw new StructureGatewayError(
       "INVALID_INPUT",
-      "Use a four-character PDB ID, for example 1CRN or 4HHB.",
+      "Use a four-character PDB ID (e.g. 1CRN) or AlphaFold/UniProt identifier (e.g. AF-P04637-F1 or P04637).",
       false,
     );
   }
@@ -118,7 +119,39 @@ export const structureGateway = {
     const cached = await getCachedStructure(id);
     if (cached) {
       const format = detectStructureFormat(cached);
-      return { id, source: FIXTURE_IDS.has(id) ? "fixture" : "custom", format, data: cached };
+      return { id, source: FIXTURE_IDS.has(id) ? "fixture" : id.startsWith("AF-") || id.length > 4 ? "alphafold" : "custom", format, data: cached };
+    }
+
+    // Check Supabase Cloud Storage for user-uploaded custom structures
+    const cloudDownloaded = await downloadStructureFile(id);
+    if (cloudDownloaded) {
+      const format = detectStructureFormat(cloudDownloaded);
+      return { id, source: "custom", format, data: cloudDownloaded };
+    }
+
+    // Handle AlphaFold DB predictions (e.g. AF-P04637-F1 or UniProt accession P04637)
+    if (id.startsWith("AF-") || id.length > 4) {
+      const uniprotId = id.startsWith("AF-") ? id.split("-")[1] : id;
+      try {
+        const metadataResponse = await fetch(`https://alphafold.ebi.ac.uk/api/prediction/${uniprotId}`, { signal });
+        if (metadataResponse.ok) {
+          const list = (await metadataResponse.json()) as Array<{ cifUrl?: string; pdbUrl?: string }>;
+          const entry = list[0];
+          const downloadUrl = entry?.cifUrl || entry?.pdbUrl;
+          if (downloadUrl) {
+            const data = await fetchTextWithLimits(downloadUrl, signal);
+            void setCachedStructure(id, data);
+            return { id, source: "alphafold", format: detectStructureFormat(data), data };
+          }
+        }
+      } catch (err) {
+        if (err instanceof StructureGatewayError) throw err;
+      }
+      throw new StructureGatewayError(
+        "FETCH_FAILED",
+        `AlphaFold 3D structure for ${id} was not found in AlphaFold DB.`,
+        false,
+      );
     }
 
     const data = await fetchTextWithLimits(

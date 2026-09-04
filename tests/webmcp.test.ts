@@ -20,6 +20,25 @@ const VALID_INPUTS: Record<string, unknown> = {
     toAminoAcid: "W",
   },
   reset_workspace: { scope: "view" },
+  export_publication_figure: { resolution: "4k", background: "transparent", format: "png" },
+  annotate_active_site: {
+    chain: "A",
+    residueNumber: 41,
+    note: "Active site base",
+    color: "#5ccfb5",
+  },
+  query_uniprot_annotations: {
+    pdbId: "1CRN",
+    highlightInViewer: true,
+  },
+  compare_structures_rmsd: {
+    referencePdbId: "6LU7",
+    mobilePdbId: "1CRN",
+  },
+  save_project_snapshot: {
+    title: "WebMCP Snapshot",
+    description: "Saved via WebMCP tool",
+  },
 };
 
 beforeEach(() => {
@@ -29,7 +48,7 @@ beforeEach(() => {
 });
 
 describe("WebMCP adapter", () => {
-  it("registers the eight audited contracts once", async () => {
+  it("registers the thirteen audited contracts once", async () => {
     const registered: WebMCPToolDefinition[] = [];
     const modelContext: WebMCPModelContext = {
       registerTool: (tool) => {
@@ -41,11 +60,11 @@ describe("WebMCP adapter", () => {
     await expect(registerBioFoldTools(modelContext)).resolves.toBe(true);
 
     expect(registered.map((tool) => tool.name)).toEqual(COMMAND_NAMES);
-    expect(registered).toHaveLength(8);
+    expect(registered).toHaveLength(13);
     expect(useAppStore.getState()).toMatchObject({
       webmcpStatus: "ready",
       webmcpSupported: true,
-      registeredToolCount: 8,
+      registeredToolCount: 13,
     });
   });
 
@@ -55,7 +74,7 @@ describe("WebMCP adapter", () => {
 
     const registerTool = vi.fn();
     await expect(registerBioFoldTools({ registerTool })).resolves.toBe(true);
-    expect(registerTool).toHaveBeenCalledTimes(8);
+    expect(registerTool).toHaveBeenCalledTimes(13);
   });
 
   it("preserves successful registrations and retries only a failed tool", async () => {
@@ -73,11 +92,11 @@ describe("WebMCP adapter", () => {
     await expect(registerBioFoldTools(modelContext)).resolves.toBe(false);
     expect(useAppStore.getState()).toMatchObject({
       webmcpStatus: "partial",
-      registeredToolCount: 7,
+      registeredToolCount: 12,
     });
 
     await expect(registerBioFoldTools(modelContext)).resolves.toBe(true);
-    expect(registered).toHaveLength(8);
+    expect(registered).toHaveLength(13);
     expect(registered.filter((name) => name === "load_structure")).toHaveLength(1);
     expect(representationAttempts).toBe(2);
   });
@@ -91,7 +110,7 @@ describe("WebMCP adapter", () => {
 
     expect(first).toBe(second);
     await expect(first).resolves.toBe(true);
-    expect(registerTool).toHaveBeenCalledTimes(8);
+    expect(registerTool).toHaveBeenCalledTimes(13);
   });
 
   it("routes all tools through the shared command bus with agent origin and AbortSignal", async () => {
@@ -103,7 +122,7 @@ describe("WebMCP adapter", () => {
       await tool.execute(VALID_INPUTS[tool.name], { signal: controller.signal });
     }
 
-    expect(spy).toHaveBeenCalledTimes(8);
+    expect(spy).toHaveBeenCalledTimes(13);
     for (const [index, name] of COMMAND_NAMES.entries()) {
       expect(spy).toHaveBeenNthCalledWith(
         index + 1,

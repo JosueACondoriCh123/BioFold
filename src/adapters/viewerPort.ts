@@ -92,7 +92,7 @@ function toAtomRecords(model: $3Dmol.GLModel): AtomRecord[] {
   }));
 }
 
-class MolecularViewerPort {
+export class MolecularViewerPort {
   private viewer: $3Dmol.GLViewer | null = null;
   private model: $3Dmol.GLModel | null = null;
   private surfaceId: number | null = null;
@@ -144,6 +144,10 @@ class MolecularViewerPort {
     return this.viewer !== null;
   }
 
+  hasModel(): boolean {
+    return this.model !== null;
+  }
+
   getView(): ViewerCameraState | null {
     if (!this.viewer) return null;
     return parseViewerCameraState(this.viewer.getView());
@@ -151,7 +155,17 @@ class MolecularViewerPort {
 
   setView(view: ViewerCameraState) {
     if (!this.viewer) throw new ViewerPortError("RENDER_FAILED", "The molecular viewer is not ready.");
-    this.viewer.setView([...parseViewerCameraState(view)]).render();
+    try {
+      const camera = parseViewerCameraState(view);
+      this.viewer.setView([...camera]).render();
+    } catch {
+      try {
+        this.viewer.zoomTo();
+        this.viewer.render();
+      } catch {
+        /* ignore fallback */
+      }
+    }
   }
 
   subscribeViewChanges(listener: (view: ViewerCameraState) => void) {
@@ -161,7 +175,12 @@ class MolecularViewerPort {
 
   resize() {
     if (this.suspended || !this.element?.clientWidth || !this.element.clientHeight) return;
-    this.viewer?.resize().render();
+    try {
+      this.viewer?.resize();
+      this.viewer?.render();
+    } catch {
+      /* ignore */
+    }
   }
 
   setSuspended(suspended: boolean) {
@@ -437,15 +456,17 @@ class MolecularViewerPort {
   }
 
   resetView() {
-    if (!this.viewer || !this.model) throw new Error("No structure is loaded.");
+    if (!this.viewer) throw new Error("The molecular viewer is not ready.");
     this.viewer.removeAllLabels();
     this.viewer.removeAllShapes();
     if (this.surfaceId !== null) {
       this.viewer.removeSurface(this.surfaceId);
       this.surfaceId = null;
     }
-    this.setRepresentation("cartoon", "chain");
-    this.viewer.zoomTo();
+    if (this.model) {
+      this.setRepresentation("cartoon", "chain");
+      this.viewer.zoomTo();
+    }
     this.viewer.render();
   }
 
@@ -488,6 +509,92 @@ class MolecularViewerPort {
       return null;
     }
   }
+
+  captureCustomFigure(options: {
+    resolution?: "1x" | "2x" | "4k";
+    background?: "white" | "transparent" | "dark";
+    format?: "png" | "jpeg";
+    quality?: number;
+  }): string | null {
+    if (!this.viewer) return null;
+    const {
+      resolution = "4k",
+      background = "white",
+      format = "png",
+      quality = 0.95,
+    } = options;
+
+    const originalBg = 0x07100f;
+    try {
+      let targetBg = originalBg;
+      let targetAlpha = 1.0;
+
+      if (background === "white") {
+        targetBg = 0xffffff;
+        targetAlpha = 1.0;
+      } else if (background === "transparent") {
+        targetBg = 0x000000;
+        targetAlpha = 0.0;
+      }
+
+      if (typeof this.viewer.setBackgroundColor === "function") {
+        this.viewer.setBackgroundColor(targetBg, targetAlpha);
+      }
+
+      this.viewer.render();
+
+      const mime = format === "jpeg" ? "image/jpeg" : "image/png";
+      let dataUrl: string | null = null;
+
+      const canvas = this.viewer.getCanvas?.();
+      if (canvas && resolution !== "1x" && typeof document !== "undefined") {
+        const multiplier = resolution === "4k" ? 2.5 : 1.5;
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = Math.round(canvas.width * multiplier);
+        tempCanvas.height = Math.round(canvas.height * multiplier);
+        const ctx = tempCanvas.getContext("2d");
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          if (background === "white") {
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+          } else if (background === "dark") {
+            ctx.fillStyle = "#07100f";
+            ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+          }
+          ctx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height);
+          dataUrl = tempCanvas.toDataURL(mime, quality);
+        }
+      }
+
+      if (!dataUrl) {
+        if (canvas) {
+          dataUrl = canvas.toDataURL(mime, quality);
+        } else if (typeof this.viewer.pngURI === "function") {
+          dataUrl = this.viewer.pngURI();
+        }
+      }
+
+      if (typeof this.viewer.setBackgroundColor === "function") {
+        this.viewer.setBackgroundColor(originalBg, 1.0);
+      }
+      this.viewer.render();
+
+      return dataUrl;
+    } catch {
+      try {
+        if (typeof this.viewer.setBackgroundColor === "function") {
+          this.viewer.setBackgroundColor(originalBg, 1.0);
+          this.viewer.render();
+        }
+      } catch {
+        /* ignore */
+      }
+      return null;
+    }
+  }
 }
 
 export const viewerPort = new MolecularViewerPort();
+

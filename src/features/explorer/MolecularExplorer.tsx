@@ -25,6 +25,7 @@ import {
 } from "../../data/molecularCatalog";
 import { setCachedStructure } from "../../adapters/structureCache";
 import { detectStructureFormat } from "../../adapters/structureGateway";
+import { uploadStructureFile } from "../../services/molecularStorageService";
 import "./explorer.css";
 
 export interface MolecularExplorerProps {
@@ -137,7 +138,12 @@ export function MolecularExplorer({
           setIsSavingImport(false);
           return;
         }
-        await setCachedStructure(normalized, importFile.content);
+        await uploadStructureFile({
+          pdbId: normalized,
+          content: importFile.content,
+          format: importFile.format,
+          filename: importFile.name,
+        });
         saveCustomCatalogItem({
           id: normalized,
           name: importName.trim() || importFile.name,
@@ -312,7 +318,7 @@ export function MolecularExplorer({
               {searchQuery && (
                 <button
                   type="button"
-                  className="bf-search-clear-btn"
+                  className="bf-explorer-search-clear-btn"
                   onClick={() => setSearchQuery("")}
                   aria-label="Clear search"
                 >

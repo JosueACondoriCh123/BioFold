@@ -444,4 +444,109 @@ describe("Command Bus atomicity", () => {
     });
     expect(useAppStore.getState().activity).toHaveLength(1);
   });
+
+  it("exports a publication figure at 4K resolution and records audit entry", async () => {
+    const mockDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    vi.spyOn(viewerPort, "captureCustomFigure").mockReturnValue(mockDataUrl);
+
+    const result = await commandBus.execute(
+      "export_publication_figure",
+      { resolution: "4k", background: "transparent", format: "png" },
+      { origin: "human" },
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data!.dataUrl).toContain("data:image/png;base64,");
+      expect(result.data!.dpi).toBe(300);
+      expect(result.data!.format).toBe("png");
+      expect(result.data!.width).toBe(3840);
+    }
+    expect(useAppStore.getState().activity[0]).toMatchObject({
+      command: "export_publication_figure",
+      status: "success",
+    });
+  });
+
+  it("annotates an active site residue and persistent bookmark", async () => {
+    vi.spyOn(viewerPort, "getAtoms").mockReturnValue([atom]);
+    const focusSpy = vi.spyOn(viewerPort, "focusResidues").mockImplementation(() => undefined);
+
+    const result = await commandBus.execute(
+      "annotate_active_site",
+      { chain: "A", residueNumber: 1, note: "Catalytic Asp1", color: "#ff6b6b" },
+      { origin: "human" },
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data!.bookmark.note).toBe("Catalytic Asp1");
+      expect(result.data!.bookmark.chain).toBe("A");
+      expect(result.data!.bookmark.residueNumber).toBe(1);
+      expect(result.data!.bookmark.color).toBe("#ff6b6b");
+    }
+    expect(focusSpy).toHaveBeenCalledWith([{ chain: "A", residueNumber: 1 }], true);
+    expect(useAppStore.getState().selectedResidues).toEqual([{ chain: "A", residueNumber: 1 }]);
+    expect(useAppStore.getState().activity[0]).toMatchObject({
+      command: "annotate_active_site",
+      status: "success",
+    });
+  });
+
+  it("queries biological UniProt annotations and highlights active sites", async () => {
+    const focusSpy = vi.spyOn(viewerPort, "focusResidues").mockImplementation(() => undefined);
+
+    const result = await commandBus.execute(
+      "query_uniprot_annotations",
+      { pdbId: "1CRN", highlightInViewer: true },
+      { origin: "human" },
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data!.annotations.pdbId).toBe("1CRN");
+      expect(result.data!.annotations.proteinName).toBe("Crambin");
+    }
+    expect(useAppStore.getState().activity[0]).toMatchObject({
+      command: "query_uniprot_annotations",
+      status: "success",
+    });
+  });
+
+  it("compares structures and calculates RMSD with identical structures", async () => {
+    const result = await commandBus.execute(
+      "compare_structures_rmsd",
+      { referencePdbId: "1CRN", mobilePdbId: "1CRN" },
+      { origin: "human" },
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data!.rmsd).toBe(0.0);
+      expect(result.data!.interpretation).toContain("Identical structures");
+    }
+    expect(useAppStore.getState().activity[0]).toMatchObject({
+      command: "compare_structures_rmsd",
+      status: "success",
+    });
+  });
+
+  it("saves a project snapshot into local storage with revision tracking", async () => {
+    const result = await commandBus.execute(
+      "save_project_snapshot",
+      { title: "Test Snapshot Title", description: "Test Snapshot Description" },
+      { origin: "human" },
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data!.title).toBe("Test Snapshot Title");
+      expect(result.data!.revision).toBe(1);
+      expect(result.data!.projectId).toBeTruthy();
+    }
+    expect(useAppStore.getState().activity[0]).toMatchObject({
+      command: "save_project_snapshot",
+      status: "success",
+    });
+  });
 });

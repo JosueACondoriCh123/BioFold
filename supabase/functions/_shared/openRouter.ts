@@ -83,6 +83,29 @@ const proposalSchema = {
       toAminoAcid: { type: "string", pattern: "^[ARNDCQEGHILKMFPSTWYVarn dcqeghilkmfpstwyv]$".replaceAll(" ", "") },
     })),
     proposal("reset_workspace", objectSchema({ scope: { enum: ["view", "all"] } })),
+    proposal("export_publication_figure", objectSchema({
+      resolution: { enum: ["1x", "2x", "4k"] },
+      background: { enum: ["white", "transparent", "dark"] },
+      format: { enum: ["png", "jpeg"] },
+    })),
+    proposal("annotate_active_site", objectSchema({
+      chain: { type: "string", minLength: 1, maxLength: 4 },
+      residueNumber: { type: "integer" },
+      note: { type: "string", minLength: 1, maxLength: 500 },
+      color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+    })),
+    proposal("query_uniprot_annotations", objectSchema({
+      pdbId: { type: "string", minLength: 4, maxLength: 32 },
+      highlightInViewer: { type: "boolean" },
+    })),
+    proposal("compare_structures_rmsd", objectSchema({
+      referencePdbId: { type: "string", minLength: 4, maxLength: 32 },
+      mobilePdbId: { type: "string", minLength: 4, maxLength: 32 },
+    })),
+    proposal("save_project_snapshot", objectSchema({
+      title: { type: "string", minLength: 1, maxLength: 120 },
+      description: { type: "string", minLength: 1, maxLength: 1000 },
+    })),
   ],
 };
 

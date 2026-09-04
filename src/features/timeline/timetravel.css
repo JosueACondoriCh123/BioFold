@@ -1,0 +1,166 @@
+/* BioFold 3D: Time-Travel Slider & Replay Bar CSS */
+
+.bf-timetravel-bar {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 40px);
+  max-width: 680px;
+  background: rgba(13, 23, 20, 0.94);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(92, 207, 181, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 50;
+  animation: bfTimeTravelSlideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes bfTimeTravelSlideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.bf-timetravel-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bf-timetravel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #f6ad55;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bf-timetravel-current-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #fff;
+}
+
+.bf-timetravel-cmd-tag {
+  font-family: monospace;
+  font-weight: 700;
+  color: var(--bf-accent, #5ccfb5);
+}
+
+.bf-timetravel-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bf-timetravel-range-input {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: #1a2c26;
+  border-radius: 3px;
+  outline: none;
+}
+
+.bf-timetravel-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bf-accent, #5ccfb5);
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(92, 207, 181, 0.5);
+}
+
+.bf-timetravel-step-pill {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--bf-muted, #79918b);
+  white-space: nowrap;
+}
+
+.bf-timetravel-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 6px;
+}
+
+.bf-timetravel-playback-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bf-playback-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--bf-line, #1e2c26);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.bf-playback-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.bf-restore-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(246, 173, 85, 0.15);
+  border: 1px solid rgba(246, 173, 85, 0.35);
+  color: #f6ad55;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bf-restore-btn:hover {
+  background: rgba(246, 173, 85, 0.25);
+  color: #fff;
+}
+
+.bf-exit-timetravel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid var(--bf-line, #1e2c26);
+  color: var(--bf-muted, #79918b);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.bf-exit-timetravel-btn:hover {
+  color: #fff;
+}

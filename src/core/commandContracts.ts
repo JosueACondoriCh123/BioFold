@@ -126,6 +126,11 @@ export const COMMAND_NAMES = [
   "measure_distance",
   "preview_mutation_context",
   "reset_workspace",
+  "export_publication_figure",
+  "annotate_active_site",
+  "query_uniprot_annotations",
+  "compare_structures_rmsd",
+  "save_project_snapshot",
 ] as const satisfies readonly CommandName[];
 
 export const COMMAND_CONTRACTS: { [K in CommandName]: CommandContract<K> } = {
@@ -133,14 +138,14 @@ export const COMMAND_CONTRACTS: { [K in CommandName]: CommandContract<K> } = {
     name: "load_structure",
     title: "Load protein structure",
     description:
-      "Load a four-character PDB structure ID into BioFold's shared 3D workspace. This changes the visible model and may fetch public RCSB data.",
+      "Load a structure ID (four-character PDB code or AlphaFold identifier) into BioFold's shared 3D workspace. This changes the visible model.",
     inputSchema: {
       type: "object",
       properties: {
         pdbId: {
           type: "string",
-          pattern: "^[A-Za-z0-9]{4}$",
-          description: "Four-character PDB ID, such as 1CRN or 4HHB.",
+          pattern: "^[A-Za-z0-9_-]{4,32}$",
+          description: "Four-character PDB ID (e.g. 1CRN) or AlphaFold ID (e.g. AF-P04637-F1 or P04637).",
         },
       },
       required: ["pdbId"],
@@ -150,8 +155,8 @@ export const COMMAND_CONTRACTS: { [K in CommandName]: CommandContract<K> } = {
     parseInput(input) {
       const record = strictRecord(input, ["pdbId"]);
       const pdbId = typeof record.pdbId === "string" ? record.pdbId.trim().toUpperCase() : "";
-      if (!/^[A-Z0-9]{4}$/.test(pdbId)) {
-        throw new CommandValidationError("Use a four-character PDB ID, for example 1CRN or 4HHB.");
+      if (!/^[A-Z0-9]{4}$|^AF-[A-Z0-9_-]+$|^[A-Z0-9]{6,10}$/.test(pdbId)) {
+        throw new CommandValidationError("Use a four-character PDB ID or valid AlphaFold / UniProt identifier.");
       }
       return { pdbId };
     },
@@ -314,6 +319,180 @@ export const COMMAND_CONTRACTS: { [K in CommandName]: CommandContract<K> } = {
         throw new CommandValidationError("scope must be either view or all.");
       }
       return { scope: record.scope };
+    },
+  }),
+  export_publication_figure: contract({
+    name: "export_publication_figure",
+    title: "Export publication figure",
+    description:
+      "Captures a publication-ready 3D molecular figure (300 DPI, 4K/2x/1x resolution, custom background) from the active WebGL viewer.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        resolution: { type: "string", enum: ["1x", "2x", "4k"] },
+        background: { type: "string", enum: ["white", "transparent", "dark"] },
+        format: { type: "string", enum: ["png", "jpeg"] },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, idempotentHint: false },
+    parseInput(input) {
+      if (
+        input === undefined ||
+        input === null ||
+        (typeof input === "object" && Object.keys(input as object).length === 0)
+      ) {
+        return {};
+      }
+      const record = strictRecord(input, ["resolution", "background", "format"]);
+      const resolution = record.resolution as "1x" | "2x" | "4k" | undefined;
+      const background = record.background as "white" | "transparent" | "dark" | undefined;
+      const format = record.format as "png" | "jpeg" | undefined;
+      if (resolution && !["1x", "2x", "4k"].includes(resolution)) {
+        throw new CommandValidationError("resolution must be 1x, 2x, or 4k.");
+      }
+      if (background && !["white", "transparent", "dark"].includes(background)) {
+        throw new CommandValidationError("background must be white, transparent, or dark.");
+      }
+      if (format && !["png", "jpeg"].includes(format)) {
+        throw new CommandValidationError("format must be png or jpeg.");
+      }
+      return {
+        ...(resolution ? { resolution } : {}),
+        ...(background ? { background } : {}),
+        ...(format ? { format } : {}),
+      };
+    },
+  }),
+  annotate_active_site: contract({
+    name: "annotate_active_site",
+    title: "Annotate active site or 3D pin",
+    description:
+      "Creates a persistent 3D biological bookmark or active site note on a specific residue and orients the camera to it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        chain: { type: "string", minLength: 1, maxLength: 4 },
+        residueNumber: { type: "integer" },
+        note: { type: "string", minLength: 1, maxLength: 500 },
+        color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+      },
+      required: ["chain", "residueNumber", "note"],
+      additionalProperties: false,
+    },
+    annotations: { destructiveHint: false, idempotentHint: false },
+    parseInput(input) {
+      const record = strictRecord(input, ["chain", "residueNumber", "note", "color"]);
+      const chain = typeof record.chain === "string" ? record.chain.trim().toUpperCase() : "";
+      const residueNumber = record.residueNumber;
+      const note = typeof record.note === "string" ? record.note.trim() : "";
+      const color = typeof record.color === "string" ? record.color.trim() : undefined;
+      if (
+        !chain ||
+        chain.length > 4 ||
+        typeof residueNumber !== "number" ||
+        !Number.isInteger(residueNumber)
+      ) {
+        throw new CommandValidationError("chain and integer residueNumber are required.");
+      }
+      if (!note) {
+        throw new CommandValidationError("note must not be empty.");
+      }
+      if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) {
+        throw new CommandValidationError("color must be a valid 6-character hex color (e.g. #5ccfb5).");
+      }
+      return { chain, residueNumber, note, ...(color ? { color } : {}) };
+    },
+  }),
+  query_uniprot_annotations: contract({
+    name: "query_uniprot_annotations",
+    title: "Query UniProtKB biological annotations",
+    description:
+      "Queries real-time catalytic active sites, binding sites, disulfide bridges and ClinVar variants for the active protein.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pdbId: { type: "string", pattern: "^[A-Za-z0-9_-]{4,32}$" },
+        highlightInViewer: { type: "boolean" },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    parseInput(input) {
+      if (
+        input === undefined ||
+        input === null ||
+        (typeof input === "object" && Object.keys(input as object).length === 0)
+      ) {
+        return {};
+      }
+      const record = strictRecord(input, ["pdbId", "highlightInViewer"]);
+      const pdbId = typeof record.pdbId === "string" ? record.pdbId.trim().toUpperCase() : undefined;
+      const highlightInViewer =
+        typeof record.highlightInViewer === "boolean" ? record.highlightInViewer : undefined;
+      return {
+        ...(pdbId ? { pdbId } : {}),
+        ...(highlightInViewer !== undefined ? { highlightInViewer } : {}),
+      };
+    },
+  }),
+  compare_structures_rmsd: contract({
+    name: "compare_structures_rmsd",
+    title: "Compare structures & compute RMSD",
+    description:
+      "Aligns alpha-carbon (CA) coordinates between two macromolecular structures and computes Root-Mean-Square Deviation (RMSD in Å).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        referencePdbId: { type: "string", pattern: "^[A-Za-z0-9_-]{4,32}$" },
+        mobilePdbId: { type: "string", pattern: "^[A-Za-z0-9_-]{4,32}$" },
+      },
+      required: ["mobilePdbId"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    parseInput(input) {
+      const record = strictRecord(input, ["referencePdbId", "mobilePdbId"]);
+      const mobilePdbId =
+        typeof record.mobilePdbId === "string" ? record.mobilePdbId.trim().toUpperCase() : "";
+      const referencePdbId =
+        typeof record.referencePdbId === "string" ? record.referencePdbId.trim().toUpperCase() : undefined;
+      if (!mobilePdbId) {
+        throw new CommandValidationError("mobilePdbId must be specified.");
+      }
+      return {
+        mobilePdbId,
+        ...(referencePdbId ? { referencePdbId } : {}),
+      };
+    },
+  }),
+  save_project_snapshot: contract({
+    name: "save_project_snapshot",
+    title: "Save project snapshot",
+    description:
+      "Persists the current 3D molecular session (active structure, representation, camera orientation and annotations) into cloud storage.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", minLength: 1, maxLength: 120 },
+        description: { type: "string", maxLength: 1000 },
+      },
+      required: ["title"],
+      additionalProperties: false,
+    },
+    annotations: { destructiveHint: false, idempotentHint: false },
+    parseInput(input) {
+      const record = strictRecord(input, ["title", "description"]);
+      const title = typeof record.title === "string" ? record.title.trim() : "";
+      const description =
+        typeof record.description === "string" ? record.description.trim() : undefined;
+      if (!title) {
+        throw new CommandValidationError("title must not be empty.");
+      }
+      return {
+        title,
+        ...(description ? { description } : {}),
+      };
     },
   }),
 };
