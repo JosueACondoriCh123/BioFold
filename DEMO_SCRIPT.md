@@ -1,67 +1,166 @@
-# BioFold 3D — Demo Video Script (3:00 Target)
+# BioFold 3D — Demo Video Script (3:00)
 
-A comprehensive walkthrough showcasing the full platform: public landing, authentication, workspace navigation, active 3D molecular laboratory, and real-time human + agent WebMCP collaboration.
+> Every beat below was rehearsed against the running application on 2026-09-04.
+> Exact figures come from that rehearsal, not from the design docs.
+
+## Before you hit record
+
+Three things will break the take if you skip them.
+
+1. **The laboratory does not auto-load a structure.** `/app/lab`, `/app/lab?pdb=4HHB`
+   and the search box all leave the viewer on **"No structure"**. The only reliable
+   human path is the **"Load the 1CRN demo"** button in the empty state. The script
+   below opens with that button on purpose. Do not improvise a deep link on camera.
+2. **There is no WebMCP status indicator in the UI.** `webmcpStatus` is tracked in the
+   store but never rendered. Do not say "notice the badge says WebMCP ready" — there is
+   no badge. Show the tool list in the console instead.
+3. **Decide your tool count.** The app registers **13** tools and the landing page says
+   "Thirteen tools". `README.md`, `SUBMISSION.md` and `contexto.md` still say eight.
+   Say thirteen, and fix the docs before submitting.
+
+Open DevTools before recording and keep the console docked to the right. You will paste
+one snippet into it (see `docs/WEBMCP_TESTING.md`).
 
 ---
 
-## 0:00–0:30 — Problem & Public Landing Page
-**Visual:** Show the fast, clean landing page at `http://127.0.0.1:4173/` (`/`). Scroll past the feature grid and structure preview.
+## 0:00–0:25 — The problem, on the landing page
+
+**Visual:** `/` at 1440px. Let the pinned hero play, then scroll slowly through two
+panels: *"Pixels don't measure ångströms"* and *"One command bus. Two kinds of hands."*
+
 **Narration:**
-> *"Protein structures contain the molecular keys to life, therapeutics, and disease. But conventional 3D molecular viewers are difficult for AI agents to use—vision models struggle to click through complex 3D canvases, and external scripts disconnect the scientist from the visual context.*
+> "Protein structures are where biology gets decided. But a 3D viewer is close to
+> unusable for an AI agent. Screenshot automation collapses inside a WebGL canvas — a
+> vision model cannot pick one atom out of a dense chain, hold a camera angle, or read a
+> sub-ångström distance off a render.
 >
-> *This is BioFold 3D: a WebMCP-native molecular workspace platform where humans and browser AI agents explore, measure, and understand proteins together in one shared live scene."*
+> BioFold 3D takes the other route. It hands the agent typed tools instead of pixels."
 
 ---
 
-## 0:30–0:55 — Authentication & Workspace Dashboard
-**Visual:** Click **Sign In**, log in via `/login`, and arrive at `/app` (Dashboard). Show personalized greeting *"Welcome, Ada"*, quick guides, and example structure cards (`1CRN`, `4HHB`).
+## 0:25–0:45 — Into the workspace
+
+**Visual:** Sign in, land on `/app`, click through to the laboratory.
+
 **Narration:**
-> *"BioFold is a full production platform with real Supabase authentication, PKCE flow, and private workspace routing. The public landing has zero WebGL overhead, loading instantly.*
+> "Real accounts, real row-level security, real private projects. The public landing
+> loads with zero WebGL, zero workers and no tools registered — the laboratory is the
+> only place any of that switches on."
+
+> **Not verified:** the sign-in flow was never exercised during this rehearsal, because
+> it needs your Supabase credentials. Do a full dry run of login → dashboard → lab before
+> recording.
+
+---
+
+## 0:45–1:05 — The human loads a structure
+
+**Visual:** In the empty viewer, click **"Load the 1CRN demo"**. Crambin appears. Point at
+the HUD.
+
+**On screen you will see:** `1 chains · 46 residues · 327 atoms`
+
+**Narration:**
+> "Here is Crambin. Cartoon representation, coloured by chain, forty-six residues. Every
+> control you see — style, colour, surface, measurement — runs through one typed command
+> bus. Remember that, because the agent is about to use the same one."
+
+---
+
+## 1:05–2:10 — The centrepiece: the agent takes the controls
+
+**Visual:** Paste the harness from `docs/WEBMCP_TESTING.md` into the console, then run the
+calls one at a time. Keep the 3D scene visible the whole time. Never cut away.
+
+```js
+mcpList()          // → 13 tool names
+```
+
+**Narration:**
+> "A WebMCP browser agent discovers thirteen imperative tools registered on this live
+> scene, through `document.modelContext`. Watch the viewer, not the console."
+
+```js
+await mcp("load_structure", { pdbId: "4HHB" })
+```
+**HUD becomes:** `4 chains · 574 residues · 4779 atoms`
+
+```js
+await mcp("set_representation", { style: "stick", colorScheme: "spectrum" })
+```
+**Scene chips become:** `Stick · Spectrum`
+
+```js
+await mcp("measure_distance", {
+  from: { chain: "A", residueNumber: 1,  atomName: "CA" },
+  to:   { chain: "A", residueNumber: 10, atomName: "CA" }
+})
+```
+**Scene chips become:** `Stick · Spectrum · 13.29 Å`
+
+**Narration:**
+> "Hemoglobin. Four chains, five hundred and seventy-four residues. Stick representation,
+> spectrum colouring, and a measured distance of thirteen point two nine ångströms
+> between two named atoms.
 >
-> *Once signed in, we land in our workspace dashboard. Let’s open the live 3D laboratory."*
+> Nothing was scraped from the DOM. When the agent calls `set_representation`, it runs the
+> exact TypeScript handler my click runs. One code path, one scene, one audit trail — and
+> I never lost sight of the molecule."
 
 ---
 
-## 0:55–1:35 — Entering the Lab & Agent Discovery
-**Visual:** Click **Open Laboratory** (`/app/lab`). The 3Dmol WebGL canvas boots up with Crambin (`1CRN`). The topbar status indicator switches to **"8 agent tools · WebMCP ready"**. Open the browser agent prompt sidebar.
+## 2:10–2:35 — Evidence discipline
+
+**Visual:** Scroll the console output so the `evidence` field is legible, then open the
+**Session Audit** screen.
+
+```js
+await mcp("show_surface", { visible: true, opacity: 0.6 })
+await mcp("preview_mutation_context", {
+  residue: { chain: "A", residueNumber: 10 }, toAminoAcid: "TRP"
+})
+```
+
 **Narration:**
-> *"Inside the laboratory, BioFold registers eight imperative WebMCP site tools directly into `document.modelContext`. Notice that our AI agent now has direct access to the live scene.*
+> "Every result is labelled. Coordinates come back as **observed**. The distance and the
+> surface are **calculated**. The mutation context is **heuristic** — it compares
+> physicochemical properties of neighbouring residues. It does not simulate a mutation,
+> and it says so.
 >
-> *Let’s give the agent a prompt: **'Summarize this protein, switch representation to stick with spectrum coloring, and focus on chain A residue 10.'**"*
-
-**Visual:** The agent executes `get_structure_summary`, `set_representation`, and `focus_residues`. The 3D canvas updates in real time to stick representation, and zooms into residue 10. The live activity log records every command.
-**Narration:**
-> *"The agent executes the exact domain commands. The 3D representation transforms, the camera zooms into residue 10, and our activity stream logs the action with full scientific provenance."*
+> BioFold does not predict folding, stability, binding affinity or clinical outcomes.
+> Being explicit about that is the point."
 
 ---
 
-## 1:35–2:10 — Shared Human + Agent Co-Exploration
-**Visual:** Manually grab the mouse and rotate the 3D model. Then type a measurement prompt to the agent: **"Measure distance from chain A residue 1 CA to chain A residue 10 CA."**
+## 2:35–3:00 — Close
+
+**Visual:** Session Audit with the agent's calls listed, then back to the full workspace.
+
 **Narration:**
-> *"Human and agent are equal partners in this workspace. I can take manual control with the mouse at any second to rotate the view or adjust the zoom.*
+> "Every action — mine or the agent's — is on the record, with a timestamp, a duration and
+> its evidence class. Assistant proposals stay inert until a human presses Apply, and the
+> audit trail refuses to record them without explicit approval.
 >
-> *Now, let’s ask the agent to measure: **'Measure distance between A:1:CA and A:10:CA.'**"*
-
-**Visual:** The agent executes `measure_distance`. A magenta dashed vector appears in 3D between the two carbon-alpha atoms, labeled **12.60 Å**. The HUD displays the distance, and the activity stream tags it as **Calculated** evidence.
-**Narration:**
-> *"The measurement is rendered immediately in 3D with an exact vector and Ångström readout. The activity item clearly tags this as 'Calculated' evidence, grounded in observed atomic coordinates."*
+> That is BioFold 3D: not an agent that watches a screen, but one with hands — working
+> beside you, on your structure, where you can check everything it did."
 
 ---
 
-## 2:10–2:40 — Honest Mutation Context & Surfaces
-**Visual:** Prompt the agent: **"Preview changing chain A residue 10 to Tryptophan, and enable molecular surface at 50% opacity."**
-**Narration:**
-> *"Let’s explore a mutation question: **'Preview changing chain A residue 10 to Tryptophan, and turn on the molecular surface at 50% opacity.'**"*
+## Verified figures
 
-**Visual:** The target residue turns amber, its 5 Å spatial neighbors highlight in cyan, and the mutation panel reports sidechain volume, hydropathy, and charge differences. In parallel, a non-blocking background worker computes and displays the semi-transparent molecular surface.
-**Narration:**
-> *"BioFold maps the spatial neighborhood in 3D and compares physicochemical properties. Crucially, we maintain strict scientific honesty: this is labeled as a heuristic context tool, not an ungrounded claim of stability or folding prediction."*
+| Fact | Value |
+|---|---|
+| Tools registered | 13 |
+| 1CRN | 1 chain · 46 residues · 327 atoms |
+| 4HHB | 4 chains · 574 residues · 4779 atoms |
+| `measure_distance` A:1:CA ↔ A:10:CA on 4HHB | 13.29 Å |
+| `measure_distance` A:1:CA ↔ A:10:CA on 1CRN | 12.60 Å |
+| Evidence tiers shown | observed · calculated · heuristic |
 
----
+## Rehearsal checklist
 
-## 2:40–3:00 — Session Isolation, Account & Wrap-Up
-**Visual:** Click **Account** in the header. The canvas cleanly hides, tools unregister, and user profile details appear. Click back to **Laboratory**—the 3D scene and camera are preserved. Click **Sign Out**, returning cleanly to `/login`.
-**Narration:**
-> *"When we navigate to our Account settings, WebMCP tools deactivate and the canvas is suspended without losing our 3D session in memory. Upon signing out, the active scene and tokens are safely purged.*
->
-> *WebMCP turns AI agents from passive chatbot observers into active, high-precision collaborators inside scientific applications. Thank you for exploring BioFold 3D!"*
+- [ ] Log in with real credentials once, end to end
+- [ ] Confirm "Load the 1CRN demo" appears and works
+- [ ] Paste the harness, confirm `mcpList()` returns 13
+- [ ] Run the whole tool sequence once; confirm the HUD changes each time
+- [ ] Reconcile the tool count across README, SUBMISSION and the landing page
