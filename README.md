@@ -9,7 +9,7 @@
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg?style=flat-square)](https://www.typescriptlang.org/)
   [![Vite](https://img.shields.io/badge/Vite-6.0-646CFF.svg?style=flat-square)](https://vitejs.dev/)
   [![React](https://img.shields.io/badge/React-19.0-61DAFB.svg?style=flat-square)](https://react.dev/)
-  [![Vitest](https://img.shields.io/badge/Tests-438%20passing-success.svg?style=flat-square)](https://vitest.dev/)
+  [![Vitest](https://img.shields.io/badge/Tests-459%20passing-success.svg?style=flat-square)](https://vitest.dev/)
   [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20%7C%20Auth%20%7C%20RLS-3ECF8E.svg?style=flat-square)](https://supabase.com/)
   [![WebMCP](https://img.shields.io/badge/WebMCP-13%20Tools%20Active-emerald.svg?style=flat-square)](#how-biofold-3d-advances-webmcp)
   [![License](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](./LICENSE)
@@ -165,6 +165,14 @@ When an agent enters `/app/lab`, BioFold dynamically registers 13 specialized to
 - **Automatic DPI Injection:** Embeds physical print resolution (`pHYs` chunk at 300 DPI) directly into the PNG file header.
 - **One-Click Clipboard & Download:** Copy figures directly to clipboard or trigger automated file downloads.
 
+### 9. Scientific Report Generation Service
+- **Automated Printable Reports:** Compiles current molecular structures, active residue selections, spatial measurements, and WebMCP provenance logs into formatted scientific documents.
+- **Print & PDF Export:** Integrated window print dispatcher with browser print fallback handling and full styling support for journal submissions.
+
+### 10. Cinematic Landing Stage & Video Experience
+- **Interactive Video Hero:** HTML5 video stage (`/public/media/helix.mp4` / `.webm`) with fallback image posters and smooth progress controls (`useStageProgress`).
+- **WebMCP Tool Demonstrations:** Direct visual overview of all 13 audited WebMCP tools and live Command Bus interaction loops.
+
 ---
 
 ## Application Route Map
@@ -207,8 +215,8 @@ pnpm build
 ```
 
 ### Test Suite Status
-- **63/63 test files passing (100%)**
-- **438 automated tests passing**
+- **64/64 test files passing (100%)**
+- **459 automated tests passing**
 - Coverage includes:
   - Strict JSON schema validation for all 13 WebMCP tools.
   - PostgreSQL Row-Level Security (RLS) simulation for multi-tenant isolation.
